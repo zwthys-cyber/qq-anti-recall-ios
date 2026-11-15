@@ -281,7 +281,7 @@ NSDictionary *QARBadgeStatus(void) {
     }
     return @{@"installed_hooks": @(installed), @"hook_results": results, @"hook_still_active": active,
              @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)),
-             @"missing_height_hook": @(atomic_load(&unresolved)), @"text": @"已撤回 · 已保留"};
+             @"footer_space_unavailable": @(atomic_load(&unresolved)), @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
     atomic_store(&displayed, 0); atomic_store(&unresolved, 0); atomic_store(&heightChanges, 0);

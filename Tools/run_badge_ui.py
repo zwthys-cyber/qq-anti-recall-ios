@@ -1,4 +1,5 @@
 """Build/run a UIKit fixture on GitHub Actions; never install or execute QQ."""
+import base64
 import json
 import os
 import pathlib
@@ -70,6 +71,8 @@ destination = pathlib.Path("dist")
 destination.mkdir(exist_ok=True)
 for name in ("badge-light.png", "badge-dark.png"):
     shutil.copy2(container / "Documents" / name, destination / name)
+    # Synthetic fixture pixels only, for review without running local repository tools.
+    print("QAR_BADGE_PREVIEW " + name + " " + base64.b64encode((destination / name).read_bytes()).decode(), flush=True)
 (destination / "badge-ui-tests.json").write_text(json.dumps({
     "passed": True, "environment": "synthetic UIKit simulator fixture",
     "real_qq_runtime_verified": False,

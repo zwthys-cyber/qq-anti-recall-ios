@@ -43,6 +43,10 @@ jobs:
           "$RUNNER_TEMP/persistence-tests" read "$RUNNER_TEMP/qar-persistence"
       - name: Exercise UIKit badge placement, reuse, history reload and dark mode
         run: python3 Tools/run_badge_ui.py
+      - name: Stop fixture simulators
+        if: always()
+        timeout-minutes: 2
+        run: xcrun simctl shutdown all
       - name: Build iOS arm64 injection library
         run: |
           mkdir -p dist
