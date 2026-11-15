@@ -64,8 +64,12 @@
 @property(nonatomic) NSUInteger heightAttempts;
 @end
 @implementation QARBadgeCellState @end
+@interface QARBadgeBinding : NSObject
+@property(nonatomic,weak) UITableViewCell *cell;
+@end
+@implementation QARBadgeBinding @end
 
-static char stateKey, pendingKey;
+static char stateKey, pendingKey, bindingKey;
 static NSHashTable<UITableViewCell *> *visibleCells;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges;
 static void avatarLayout(id self, SEL cmd);
@@ -150,6 +154,9 @@ static void requestHeight(UITableView *table) {
 }
 static void clearCell(UITableViewCell *cell) {
     QARBadgeCellState *state = objc_getAssociatedObject(cell, &stateKey);
+    QARBadgeBinding *binding = state.model ? objc_getAssociatedObject(state.model, &bindingKey) : nil;
+    if (binding.cell == cell && state.model)
+        objc_setAssociatedObject(state.model, &bindingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [state.pill removeFromSuperview];
     state.pill = nil;
     state.model = nil;
@@ -212,6 +219,11 @@ static BOOL bindCell(id self, SEL cmd, id model) {
     BOOL result = ((BOOL (*)(id, SEL, id))hooks[1].original)(self, cmd, model);
     if (result && cell) {
         stateFor(cell).model = model;
+        if (model) {
+            QARBadgeBinding *binding = [QARBadgeBinding new];
+            binding.cell = cell;
+            objc_setAssociatedObject(model, &bindingKey, binding, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         refresh(cell);
     }
     return result;
@@ -232,8 +244,13 @@ static double rowHeight(id self, SEL cmd, id table, id path) {
     double original = ((double (*)(id, SEL, id, id))hooks[5].original)(self, cmd, table, path);
     if (!NSThread.isMainThread || ![table isKindOfClass:UITableView.class] ||
         ![path isKindOfClass:NSIndexPath.class] || !isfinite(original) || original <= 0) return original;
-    UITableViewCell *cell = [(UITableView *)table cellForRowAtIndexPath:path];
-    id record = cellRecord(cell, self);
+    // Asking UITableView for a cell here re-enters its row-height calculation.
+    // Only consult the weak association established when QQ binds the model.
+    QARBadgeBinding *binding = objc_getAssociatedObject(self, &bindingKey);
+    UITableViewCell *cell = binding.cell;
+    QARBadgeCellState *boundState = cell ? objc_getAssociatedObject(cell, &stateKey) : nil;
+    if (boundState.model != self || parentTable(cell) != table) cell = nil;
+    id record = QARBadgeRecord(self) ?: cellRecord(cell, nil);
     BOOL marked = record && QARIsMarkedRecord(record);
     CGFloat extra = marked ? footerHeight() : 0;
     QARBadgeCellState *state = cell ? stateFor(cell) : nil;

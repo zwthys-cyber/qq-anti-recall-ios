@@ -64,10 +64,23 @@ static void check(BOOL condition, const char *why) {
     self.body.frame = CGRectMake(56, 14, MIN(280, self.bounds.size.width - 72), 50);
 }
 @end
+static BOOL evaluatingHeight;
+@interface FixtureTable : UITableView @end
+@implementation FixtureTable
+- (UITableViewCell *)cellForRowAtIndexPath:(NSIndexPath *)path {
+    check(!evaluatingHeight, "row-height hooks must never recursively query UITableView cells");
+    return [super cellForRowAtIndexPath:path];
+}
+@end
 @interface FixtureController : UITableViewController
 @property(nonatomic,strong) NSArray<FixtureModel *> *models;
 @end
 @implementation FixtureController
+- (void)loadView {
+    self.tableView = [[FixtureTable alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+}
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { (void)table; (void)section; return self.models.count; }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     FixtureCell *cell = [table dequeueReusableCellWithIdentifier:@"fixture"];
@@ -75,7 +88,10 @@ static void check(BOOL condition, const char *why) {
     [cell bindViewModel:self.models[path.row]]; return cell;
 }
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
-    return [self.models[path.row] tableView:table heightForRowAtIndexPath:path];
+    evaluatingHeight = YES;
+    CGFloat height = [self.models[path.row] tableView:table heightForRowAtIndexPath:path];
+    evaluatingHeight = NO;
+    return height;
 }
 @end
 static void registerFixture(Class base, const char *name) {
@@ -141,10 +157,12 @@ static void after(dispatch_block_t block) {
               CGRectGetMaxY(pill.frame) <= cell.contentView.bounds.size.height, "badge is below the body and inside its own row");
         UITableViewCell *second = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
         check(!QARBadgeViewForTest(second) || QARBadgeViewForTest(second).hidden, "normal row has no recall badge");
+        report(@"STEP: initial badge and ordinary row assertions passed");
         [self savePreview:@"badge-light.png"];
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         after(^{
             [self savePreview:@"badge-dark.png"];
+            report(@"STEP: light and dark previews saved");
             [cell prepareForReuse]; [cell bindViewModel:model(normal)]; [cell layoutIfNeeded];
             check(!QARBadgeViewForTest(cell) || QARBadgeViewForTest(cell).hidden, "reuse clears the previous message badge");
             QARStoreDropMemoryForTest();
@@ -154,6 +172,7 @@ static void after(dispatch_block_t block) {
                 UITableViewCell *restoredCell = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
                 check(QARBadgeViewForTest(restoredCell) && !QARBadgeViewForTest(restoredCell).hidden,
                     "badge returns after history reload from disk");
+                report(@"STEP: reuse and disk reload assertions passed");
                 QARSetEnabled(NO);
                 after(^{
                     check(!QARBadgeViewForTest(restoredCell) || QARBadgeViewForTest(restoredCell).hidden, "disabling hides the badge");

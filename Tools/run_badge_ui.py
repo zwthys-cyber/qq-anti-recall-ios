@@ -80,6 +80,9 @@ while time.monotonic() < deadline:
             result = current
         if result.startswith(("PASS:", "FAIL:")):
             break
+    crash_reports = pathlib.Path.home() / "Library" / "Logs" / "DiagnosticReports"
+    if list(crash_reports.glob("QARBadgeFixture*.ips")):
+        break
     time.sleep(1)
 if not result.startswith("PASS: UIKit footer geometry"):
     reports = pathlib.Path.home() / "Library" / "Logs" / "DiagnosticReports"
