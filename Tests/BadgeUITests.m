@@ -10,6 +10,7 @@
 
 static void report(NSString *text) {
     NSURL *documents = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    [NSFileManager.defaultManager createDirectoryAtURL:documents withIntermediateDirectories:YES attributes:nil error:nil];
     [text writeToURL:[documents URLByAppendingPathComponent:@"fixture-result.txt"]
          atomically:YES encoding:NSUTF8StringEncoding error:nil];
     fprintf(stderr, "%s\n", text.UTF8String); fflush(stderr);

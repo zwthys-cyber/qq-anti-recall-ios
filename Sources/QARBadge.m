@@ -171,7 +171,7 @@ static void refresh(UITableViewCell *cell) {
     UITableView *table = parentTable(cell);
     if (!marked) {
         state.pill.hidden = YES;
-        if (state.reserved > 0 && state.heightAttempts++ < 2) requestHeight(table);
+        if (state.reserved > 0 && table.window && state.heightAttempts++ < 2) requestHeight(table);
         return;
     }
     state.owner = owner;
@@ -179,8 +179,9 @@ static void refresh(UITableViewCell *cell) {
     // Do not place a label over message text before the row has gained footer space.
     if (state.reserved < extra - 0.5 || cell.bounds.size.height < state.baseHeight + extra - 1) {
         state.pill.hidden = YES;
-        if (hooks[5].original && state.heightAttempts++ < 2) requestHeight(table);
-        else atomic_fetch_add(&unresolved, 1);
+        if (hooks[5].original && table.window && state.heightAttempts++ < 2) requestHeight(table);
+        else if (!hooks[5].original || (table.window && state.heightAttempts > 2))
+            atomic_fetch_add(&unresolved, 1);
         return;
     }
     if (!state.pill) {
