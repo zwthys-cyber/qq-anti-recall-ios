@@ -51,7 +51,14 @@ static void capture(id value, NSString *owner) {
     if (!image || image.size.width * image.scale * image.size.height * image.scale > 32000000) {
         atomic_fetch_add(&unsupported, 1); return;
     }
-    NSData *data = UIImagePNGRepresentation(image);
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1; format.opaque = NO; format.preferredRange = UIGraphicsImageRendererFormatRangeStandard;
+    CGSize pixels = CGSizeMake(image.size.width * image.scale, image.size.height * image.scale);
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:pixels format:format];
+    UIImage *canonical = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *context) {
+        [image drawInRect:(CGRect){CGPointZero, pixels}];
+    }];
+    NSData *data = UIImagePNGRepresentation(canonical);
     if (!data.length || data.length > 16*1024*1024) { atomic_fetch_add(&failures, 1); return; }
     unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
     NSMutableString *name = [NSMutableString new];

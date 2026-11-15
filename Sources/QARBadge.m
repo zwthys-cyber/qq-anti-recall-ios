@@ -388,6 +388,7 @@ NSDictionary *QARBadgeStatus(void) {
         @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
+    atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);
     atomic_store(&displayed, 0); atomic_store(&unresolved, 0); atomic_store(&heightChanges, 0);
     atomic_store(&heightCalls, 0); atomic_store(&reservedRows, 0); atomic_store(&recordsFound, 0);
     atomic_store(&missingPath, 0); atomic_store(&missingHeightMethod, 0); atomic_store(&delegateABIRejects, 0);

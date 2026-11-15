@@ -2,6 +2,7 @@
 #import <objc/runtime.h>
 #import "QARBadge.h"
 #import "QARFlash.h"
+#import "QARSettings.h"
 #import <objc/message.h>
 #import "QARSnapshot.h"
 #import "QARStore.h"
@@ -102,6 +103,31 @@ static FixtureModel *model(id record) {
 static void after(dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), block);
 }
+static UIViewController *settingsResult;
+static id settingsFactory(id receiver, SEL cmd) { (void)receiver; (void)cmd; return settingsResult; }
+@interface FixtureSettingsController : UITableViewController @end
+@implementation FixtureSettingsController @end
+static void testSettings(void) {
+    Class cls = objc_allocateClassPair(NSObject.class, "QQSettingsEntranceHelper", 0);
+    class_addMethod(object_getClass(cls), NSSelectorFromString(@"createSettingsViewController"), (IMP)settingsFactory, "@16@0:8");
+    objc_registerClassPair(cls);
+    QARInstallSettings(QARFixtureInfo());
+    FixtureSettingsController *controller = [FixtureSettingsController new]; settingsResult = controller;
+    [controller loadViewIfNeeded];
+    UIView *previous = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 300, 20)];
+    controller.tableView.tableFooterView = previous;
+    check(((id (*)(id, SEL))objc_msgSend)(cls, NSSelectorFromString(@"createSettingsViewController")) == controller,
+        "settings factory preserves original controller");
+    [controller viewDidAppear:NO];
+    UIView *footer = controller.tableView.tableFooterView;
+    check(footer != previous && previous.superview == footer && footer.subviews.count == 2,
+        "plugin entry is inside settings and preserves previous footer");
+    [controller viewDidAppear:NO];
+    check(controller.tableView.tableFooterView == footer && footer.subviews.count == 2, "settings entry does not duplicate");
+    check(![QARSettingsStatus()[@"floating_button"] boolValue], "settings integration has no floating button");
+    settingsResult = nil;
+    report(@"STEP: settings factory, in-menu entry, original footer and duplicate prevention passed");
+}
 static id flashResult;
 static id flashDecode(id receiver, SEL cmd, id path) { (void)receiver; (void)cmd; (void)path; return flashResult; }
 static void testFlash(void) {
@@ -167,7 +193,7 @@ static void testFlash(void) {
     check([scene isKindOfClass:UIWindowScene.class], "UIKit window scene");
     report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
-    testFlash();
+    testFlash(); testSettings();
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
     registerFixture(FixtureModel.class, "AIOBaseCellViewModel");

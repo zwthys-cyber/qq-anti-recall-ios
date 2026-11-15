@@ -3,12 +3,14 @@
 #import "QARStore.h"
 #import "QARBadge.h"
 #import "QARFlash.h"
+#import "QARSettings.h"
 
 static NSDictionary *controlStatus(void) {
     NSMutableDictionary *status = [QARStatus() mutableCopy];
     NSDictionary *badge = QARBadgeStatus();
     status[@"recall_badge"] = badge;
     status[@"flash_retention"] = QARFlashStatus();
+    status[@"settings_entry"] = QARSettingsStatus();
     status[@"installed_hooks"] = @([status[@"installed_hooks"] unsignedIntegerValue] + [badge[@"installed_hooks"] unsignedIntegerValue]);
     NSMutableDictionary *hooks = [status[@"hook_results"] mutableCopy];
     [hooks addEntriesFromDictionary:badge[@"hook_results"]];
@@ -17,61 +19,12 @@ static NSDictionary *controlStatus(void) {
 }
 
 @interface QARControl : NSObject
-@property(nonatomic,strong) UIButton *button;
-@property(nonatomic,weak) UIWindow *host;
-- (void)attach;
-- (void)applicationActive:(NSNotification *)notification;
+@property(nonatomic,weak) UIViewController *settingsPresenter;
+- (void)showPanel;
 @end
 @implementation QARControl
-- (void)applicationActive:(NSNotification *)notification { (void)notification; [self attach]; }
-- (UIWindow *)activeWindow {
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] ||
-            scene.activationState != UISceneActivationStateForegroundActive) continue;
-        for (UIWindow *window in ((UIWindowScene *)scene).windows)
-            if (window.isKeyWindow) return window;
-    }
-    return nil;
-}
-- (void)attach {
-    UIWindow *window = [self activeWindow];
-    if (!window) return;
-    if (!self.button) {
-        self.button = [UIButton buttonWithType:UIButtonTypeSystem];
-        [self.button setTitle:@"防撤回" forState:UIControlStateNormal];
-        self.button.accessibilityLabel = @"QQ 防撤回实验版设置";
-        self.button.backgroundColor = [UIColor.systemBlueColor colorWithAlphaComponent:0.9];
-        [self.button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        self.button.layer.cornerRadius = 16;
-        self.button.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-        [self.button addTarget:self action:@selector(showPanel) forControlEvents:UIControlEventTouchUpInside];
-        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(drag:)];
-        [self.button addGestureRecognizer:pan];
-    }
-    if (self.host != window) {
-        [self.button removeFromSuperview];
-        self.button.frame = CGRectMake(MAX(8, window.bounds.size.width - 80),
-                                       window.safeAreaInsets.top + 80, 72, 34);
-        self.button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
-                                      UIViewAutoresizingFlexibleBottomMargin;
-        [window addSubview:self.button];
-        self.host = window;
-    }
-    [window bringSubviewToFront:self.button];
-}
-- (void)drag:(UIPanGestureRecognizer *)gesture {
-    UIWindow *window = self.host;
-    if (!window) return;
-    CGPoint shift = [gesture translationInView:window];
-    CGPoint center = self.button.center;
-    center.x = MIN(MAX(center.x + shift.x, 40), window.bounds.size.width - 40);
-    center.y = MIN(MAX(center.y + shift.y, window.safeAreaInsets.top + 22),
-                   window.bounds.size.height - window.safeAreaInsets.bottom - 22);
-    self.button.center = center;
-    [gesture setTranslation:CGPointZero inView:window];
-}
 - (UIViewController *)presenter {
-    UIViewController *controller = self.host.rootViewController;
+    UIViewController *controller = self.settingsPresenter;
     while (controller) {
         if (controller.presentedViewController) controller = controller.presentedViewController;
         else if ([controller isKindOfClass:UINavigationController.class])
@@ -118,8 +71,8 @@ static NSDictionary *controlStatus(void) {
             if (![data writeToURL:file options:NSDataWritingAtomic error:nil]) return;
             UIActivityViewController *share = [[UIActivityViewController alloc]
                 initWithActivityItems:@[file] applicationActivities:nil];
-            share.popoverPresentationController.sourceView = self.button;
-            share.popoverPresentationController.sourceRect = self.button.bounds;
+            share.popoverPresentationController.sourceView = presenter.view;
+            share.popoverPresentationController.sourceRect = CGRectMake(presenter.view.bounds.size.width / 2, presenter.view.bounds.size.height / 2, 1, 1);
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[self presenter] presentViewController:share animated:YES completion:nil];
             });
@@ -130,26 +83,20 @@ static NSDictionary *controlStatus(void) {
 @end
 
 static QARControl *control;
+void QAROpenSettingsPanel(UIViewController *presenter) {
+    if (!control) control = [QARControl new];
+    control.settingsPresenter = presenter; [control showPanel];
+}
+static void installAll(void) {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+    QARInstallAdapters(info); QARInstallBadge(info); QARInstallFlash(info); QARInstallSettings(info);
+}
 __attribute__((constructor)) static void QARStart(void) {
     @autoreleasepool {
-        // The signed host may use a different bundle identifier. Exact QQ version/build
-        // and presence of QQ's recall classes are checked by the adapter.
-        NSDictionary *info = NSBundle.mainBundle.infoDictionary;
-        if (!QARVersionSupported(info)) return;
+        if (!QARVersionSupported(NSBundle.mainBundle.infoDictionary)) return;
         dispatch_async(dispatch_get_main_queue(), ^{
-            QARInstallAdapters(NSBundle.mainBundle.infoDictionary);
-            QARInstallBadge(NSBundle.mainBundle.infoDictionary);
-            QARInstallFlash(NSBundle.mainBundle.infoDictionary);
-            control = [QARControl new];
-            [NSNotificationCenter.defaultCenter addObserver:control selector:@selector(applicationActive:)
-                name:UIApplicationDidBecomeActiveNotification object:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
-                dispatch_get_main_queue(), ^{
-                    QARInstallAdapters(NSBundle.mainBundle.infoDictionary);
-            QARInstallBadge(NSBundle.mainBundle.infoDictionary);
-            QARInstallFlash(NSBundle.mainBundle.infoDictionary);
-                    [control attach];
-                });
+            installAll();
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ installAll(); });
         });
     }
 }
