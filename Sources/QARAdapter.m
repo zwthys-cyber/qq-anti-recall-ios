@@ -115,7 +115,7 @@ NSDictionary *QARStatus(void) {
     [allResults addEntriesFromDictionary:history[@"hook_results"]];
     NSUInteger installed = (ntOriginal != NULL) + (uiOriginal != NULL) + (flagOriginal != NULL) + [incoming[@"installed_hooks"] unsignedIntegerValue] + [history[@"installed_hooks"] unsignedIntegerValue];
     return @{
-        @"plugin_version": @"0.4.0-experimental",
+        @"plugin_version": @"0.5.0-experimental",
         @"short_version": hostInfo[@"CFBundleShortVersionString"] ?: @"",
         @"build_version": hostInfo[@"CFBundleVersion"] ?: @"",
         @"supported_version": @(QARVersionSupported(hostInfo ?: @{})),

@@ -375,13 +375,15 @@ NSDictionary *QARStoreStatus(void) {
     return @{@"account_context_available": @(owner != nil), @"last_disk_write_succeeded": @(atomic_load(&diskReady)),
         @"snapshots_saved": @(atomic_load(&savedCount)), @"history_records_restored": @(atomic_load(&restoreCount)),
         @"snapshot_misses": @(atomic_load(&missCount)), @"snapshot_encode_failures": @(atomic_load(&encodeFailures)),
-        @"snapshot_decode_failures": @(atomic_load(&decodeFailures)), @"disk_failures": @(atomic_load(&diskFailures)),
+        @"snapshot_decode_failures": @(atomic_load(&decodeFailures)),
+        @"snapshot_codec": QARSnapshotStatus(), @"disk_failures": @(atomic_load(&diskFailures)),
         @"missing_account_context": @(atomic_load(&missingOwner)), @"evicted_snapshots": @(atomic_load(&evictions)),
         @"marked_recalled_messages": @(atomic_load(&markedCount)), @"maximum_records_per_account": @(maxEntries),
         @"maximum_snapshot_bytes_per_account": @(maxBytes), @"content_storage": @"local_app_only",
         @"diagnostics_include_message_contents": @NO, @"uploads_message_contents": @NO};
 }
 void QARResetStoreCounters(void) {
+    QARResetSnapshotCounters();
     atomic_store(&savedCount, 0); atomic_store(&restoreCount, 0); atomic_store(&missCount, 0);
     atomic_store(&encodeFailures, 0); atomic_store(&decodeFailures, 0); atomic_store(&diskFailures, 0);
     atomic_store(&missingOwner, 0); atomic_store(&evictions, 0); atomic_store(&markedCount, 0);

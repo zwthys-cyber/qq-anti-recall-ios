@@ -23,11 +23,11 @@ static void check(BOOL condition, const char *why) {
 @end
 @implementation FixtureAvatar @end
 @interface FixtureModel : NSObject
-@property(nonatomic,strong) id record;
+@property(nonatomic,strong) id payload;
 - (double)tableView:(id)table heightForRowAtIndexPath:(id)path;
 @end
 @implementation FixtureModel
-- (double)tableView:(id)table heightForRowAtIndexPath:(id)path { (void)table; (void)path; return 78; }
+- (double)tableView:(id)table heightForRowAtIndexPath:(id)path { (void)table; (void)path; check(NO, "opaque view model height is not the UIKit delegate"); return 78; }
 @end
 @interface FixtureCell : UITableViewCell
 @property(nonatomic,strong) FixtureAvatar *avatar;
@@ -51,10 +51,10 @@ static void check(BOOL condition, const char *why) {
     [self.contentView addSubview:self.avatar]; [self.contentView addSubview:self.body];
     return self;
 }
-- (BOOL)bindViewModel:(FixtureModel *)model {
-    self.model = model; self.avatar.record = model.record;
-    self.body.text = [@"  " stringByAppendingString:QARFixtureBody(model.record) ?: @""];
-    [self setNeedsLayout]; return YES;
+- (_Bool)bindViewModel:(FixtureModel *)model {
+    self.model = model; self.avatar.record = model.payload;
+    self.body.text = [@"  " stringByAppendingString:QARFixtureBody(model.payload) ?: @""];
+    [self setNeedsLayout]; return NO; // False does not imply the visible avatar failed to bind.
 }
 - (void)unbindViewModel { self.model = nil; self.avatar.record = nil; self.body.text = nil; }
 - (void)prepareForReuse { [super prepareForReuse]; [self unbindViewModel]; }
@@ -64,11 +64,10 @@ static void check(BOOL condition, const char *why) {
     self.body.frame = CGRectMake(56, 14, MIN(280, self.bounds.size.width - 72), 50);
 }
 @end
-static BOOL evaluatingHeight;
 @interface FixtureTable : UITableView @end
 @implementation FixtureTable
 - (UITableViewCell *)cellForRowAtIndexPath:(NSIndexPath *)path {
-    check(!evaluatingHeight, "row-height hooks must never recursively query UITableView cells");
+    check(!QARBadgeHeightCallbackForTest(), "row-height hooks must never recursively query UITableView cells");
     return [super cellForRowAtIndexPath:path];
 }
 @end
@@ -88,17 +87,15 @@ static BOOL evaluatingHeight;
     [cell bindViewModel:self.models[path.row]]; return cell;
 }
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
-    evaluatingHeight = YES;
-    CGFloat height = [self.models[path.row] tableView:table heightForRowAtIndexPath:path];
-    evaluatingHeight = NO;
-    return height;
+    (void)table; (void)path;
+    return 78; // The actual delegate does not call the view model's height helper.
 }
 @end
 static void registerFixture(Class base, const char *name) {
     Class cls = objc_allocateClassPair(base, name, 0); check(cls != Nil, "allocate UI fixture class"); objc_registerClassPair(cls);
 }
 static FixtureModel *model(id record) {
-    FixtureModel *result = [NSClassFromString(@"AIOBaseCellViewModel") new]; result.record = record; return result;
+    FixtureModel *result = [NSClassFromString(@"AIOBaseCellViewModel") new]; result.payload = record; return result;
 }
 static void after(dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), block);
@@ -133,7 +130,7 @@ static void after(dispatch_block_t block) {
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
     registerFixture(FixtureModel.class, "AIOBaseCellViewModel");
     QARInstallBadge(QARFixtureInfo());
-    check([QARBadgeStatus()[@"installed_hooks"] unsignedIntegerValue] == 7, "all verified badge hooks installed");
+    check([QARBadgeStatus()[@"installed_hooks"] unsignedIntegerValue] == 6, "static avatar and cell hooks installed before discovering the actual delegate");
     QARStoreUseTestDirectory([NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"badge-fixtures"]]);
     QARClearSavedMessages();
     id original = QARFixtureMessage(1, 1, @"fixture", 0, @"这条消息已为你保留。");
@@ -157,7 +154,13 @@ static void after(dispatch_block_t block) {
               CGRectGetMaxY(pill.frame) <= cell.contentView.bounds.size.height, "badge is below the body and inside its own row");
         UITableViewCell *second = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
         check(!QARBadgeViewForTest(second) || QARBadgeViewForTest(second).hidden, "normal row has no recall badge");
-        report(@"STEP: initial badge and ordinary row assertions passed");
+        check([QARBadgeStatus()[@"rows_with_footer_reserved"] unsignedIntegerValue] > 0 &&
+            [QARBadgeStatus()[@"delegate_height_calls"] unsignedIntegerValue] > 0, "actual table delegate reserves footer space");
+        UITableView *unrelated = [UITableView new];
+        check([self.controller tableView:unrelated heightForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]] == 78,
+            "same delegate class preserves an unrelated table");
+        check(second.bounds.size.height == 78, "ordinary row keeps its original height");
+        report(@"STEP: opaque view model, false bind result, actual delegate, badge geometry and ordinary rows passed");
         [self savePreview:@"badge-light.png"];
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
         after(^{

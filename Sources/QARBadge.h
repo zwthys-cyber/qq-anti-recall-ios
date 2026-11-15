@@ -4,6 +4,7 @@ NSDictionary *QARBadgeStatus(void);
 void QARResetBadgeCounters(void);
 #ifdef QAR_TESTING
 #import <UIKit/UIKit.h>
+BOOL QARBadgeHeightCallbackForTest(void);
 void QARBadgeRefreshCellForTest(UITableViewCell *cell);
 UIView *QARBadgeViewForTest(UITableViewCell *cell);
 #endif

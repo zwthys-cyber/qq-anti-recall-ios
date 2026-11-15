@@ -45,6 +45,72 @@ static void registerCallback(const char *name, const char *selector, const char 
 @implementation WrongRecordABI
 - (long long)record { check(NO, "mismatched object getter must never be called"); return 0; }
 @end
+// Runtime collection element types absent from the static field graph must be
+// admitted only after their generated codec accessors have a verified ABI.
+@interface OCFixtureSupplement : NSObject
+@property(nonatomic,copy) NSString *caption;
+@property(nonatomic) unsigned long long identifier;
+- (void)setKt_captionFromCodec:(id)value;
+- (void)setKt_identifierFromCodec:(id)value;
+@end
+@implementation OCFixtureSupplement
+- (void)setKt_captionFromCodec:(id)value { self.caption = value; }
+- (void)setKt_identifierFromCodec:(id)value { self.identifier = [value unsignedLongLongValue]; }
+@end
+@interface OCFixtureUnsupported : NSObject
+@property(nonatomic,copy) NSString *caption;
+@property(nonatomic) double unsupportedScalar;
+- (void)setKt_captionFromCodec:(id)value;
+- (void)setKt_unsupportedScalarFromCodec:(id)value;
+@end
+@implementation OCFixtureUnsupported
+- (void)setKt_captionFromCodec:(id)value { self.caption = value; }
+- (void)setKt_unsupportedScalarFromCodec:(id)value { self.unsupportedScalar = [value doubleValue]; }
+@end
+static id richMessage(long long ident) {
+    id record = QARFixtureMessage(ident, ident, @"rich-fixture-peer", 0, @"Synthetic mixed content");
+    NSMutableArray *elements = [QARModelRead(record, @"elements", NULL) mutableCopy];
+    NSArray *types = @[
+        @[@"OCPicElement", @"picElement", @2, @"sourcePath"],
+        @[@"OCPttElement", @"pttElement", @4, @"filePath"],
+        @[@"OCVideoElement", @"videoElement", @5, @"filePath"],
+        @[@"OCFileElement", @"fileElement", @3, @"filePath"],
+        @[@"OCReplyElement", @"replyElement", @7, @"sourceMsgText"],
+        @[@"OCFaceElement", @"faceElement", @6, @"faceText"]
+    ];
+    for (NSArray *type in types) {
+        id body = QARModelCreate(type[0]), element = QARModelCreate(@"OCMsgElement");
+        check(QARModelWrite(body, type[3], [@"synthetic-fixture/" stringByAppendingString:type[0]]), "write rich payload field");
+        check(QARModelWrite(element, @"elementType", type[2]) &&
+            QARModelWrite(element, type[1], body), "write rich element union");
+        [elements addObject:element];
+    }
+    [elements addObject:elements[1]]; // Shared media object: copied once and referenced twice.
+    QARModelWrite(record, @"elements", elements);
+    OCFixtureSupplement *supplement = [OCFixtureSupplement new];
+    supplement.caption = @"Synthetic supplemental payload"; supplement.identifier = ULLONG_MAX;
+    QARModelWrite(record, @"emojiLikesList", @[supplement]);
+    NSMutableDictionary *metadata = [NSMutableDictionary new];
+    metadata[@"private-fixture-key"] = metadata;
+    QARModelWrite(record, @"msgAttrs", metadata);
+    QARModelWrite(record, @"sendStatusExtInfo", [NSObject new]);
+    return record;
+}
+static void checkRich(id record) {
+    NSArray *elements = QARModelRead(record, @"elements", NULL);
+    check(elements.count == 8, "all text, picture, voice, video, file, reply and face elements survive");
+    NSArray *pairs = @[@[@"picElement", @"sourcePath"], @[@"pttElement", @"filePath"],
+        @[@"videoElement", @"filePath"], @[@"fileElement", @"filePath"],
+        @[@"replyElement", @"sourceMsgText"], @[@"faceElement", @"faceText"]];
+    for (NSUInteger i = 0; i < pairs.count; i++) {
+        id body = QARModelRead(elements[i + 1], pairs[i][0], NULL);
+        check([QARModelRead(body, pairs[i][1], NULL) hasPrefix:@"synthetic-fixture/"], "media locator and reply payload preserved");
+    }
+    check(elements[1] == elements[7], "shared model references preserve identity");
+    OCFixtureSupplement *extra = [QARModelRead(record, @"emojiLikesList", NULL) firstObject];
+    check([extra.caption isEqual:@"Synthetic supplemental payload"] && extra.identifier == ULLONG_MAX,
+        "runtime schema and unsigned 64-bit values survive the binary plist");
+}
 int main(int argc, const char **argv) {
     @autoreleasepool {
         check(argc == 3, "mode and test directory supplied");
@@ -60,9 +126,13 @@ int main(int argc, const char **argv) {
             QARMarkRecalledUpdates(@[recalled]);
             check(QARIsMarkedRecord(original), "received update marks saved original");
             check([QARStoreStatus()[@"snapshots_saved"] unsignedIntegerValue] == 1, "snapshot reached disk");
+            id rich = richMessage(500);
+            QARRememberMessages(@[rich]);
+            check([QARStoreStatus()[@"snapshots_saved"] unsignedIntegerValue] == 2, "rich graph saves despite incidental metadata");
             puts("PASS: independent writer process persisted the original and recall marker");
             return 0;
         }
+        checkRich(QARRestoreHistory(@[QARFixtureMessage(500, 500, @"rich-fixture-peer", 1700000000, nil)])[0]);
         NSArray *restored = QARRestoreHistory(@[recalled]);
         check([QARFixtureBody(restored[0]) isEqual:QARFixtureBody(original)], "fresh reader process restores original body from disk");
         check(QARIsMarkedRecord(restored[0]), "badge marker survives a new process");
@@ -139,7 +209,7 @@ int main(int argc, const char **argv) {
         NSData *encoded = QAREncodeRecord(restored[0]);
         NSMutableDictionary *graph = [[NSPropertyListSerialization propertyListWithData:encoded
             options:NSPropertyListMutableContainersAndLeaves format:NULL error:nil] mutableCopy];
-        graph[@"c"] = @"NSInvocation";
+        graph[@"record"][@"c"] = @"NSInvocation";
         NSData *invalid = [NSPropertyListSerialization dataWithPropertyList:graph
             format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
         check(!QARDecodeRecord(invalid) && !QARDecodeRecord([encoded subdataWithRange:NSMakeRange(0, 10)]),
@@ -147,6 +217,20 @@ int main(int argc, const char **argv) {
         id unsupported = QARFixtureMessage(800, 800, @"fixture-peer", 0, @"Unknown nested type");
         QARModelWrite(unsupported, @"elements", @[[NSObject new]]);
         check(QAREncodeRecord(unsupported) == nil, "unsupported element fails the entire snapshot rather than losing content");
+        id rich = richMessage(501);
+        checkRich(QARDecodeRecord(QAREncodeRecord(rich)));
+        check([QARSnapshotStatus()[@"optional_fields_omitted"] unsignedIntegerValue] >= 2,
+            "optional cyclic and unsupported metadata does not discard body");
+        NSString *codecJSON = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:QARSnapshotStatus()
+            options:0 error:nil] encoding:NSUTF8StringEncoding];
+        check(![codecJSON containsString:@"private-fixture-key"] && ![codecJSON containsString:@"Synthetic supplemental"],
+            "codec diagnostics contain field paths and classes only");
+        check(!QARModelCreate(@"OCFixtureUnsupported"), "unsupported codec-backed scalar rejects complete runtime schema");
+        NSMutableDictionary *cyclic = [NSPropertyListSerialization propertyListWithData:QAREncodeRecord(rich)
+            options:NSPropertyListMutableContainersAndLeaves format:NULL error:nil];
+        cyclic[@"record"][@"v"][@"records"] = @{@"t": @"r", @"id": cyclic[@"record"][@"id"]};
+        check(!QARDecodeRecord([NSPropertyListSerialization dataWithPropertyList:cyclic
+            format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil]), "corrupt archive model cycles rejected");
         // Exercise every model primitive at its limits, including unsigned 64-bit values.
         for (NSString *name in QARModelSchemas()) for (NSDictionary *spec in QARModelSchemas()[name]) {
             if ([spec[@"type"] isEqual:@"@"]) continue;

@@ -261,7 +261,7 @@
     "file": "Sources/QARModelSchema.inc",
     "classes": 88,
     "inspection_run": 43763487317,
-    "scope": "Verified backed properties with canonical getters/setters and codec setters. Unknown nested classes reject the entire snapshot."
+    "scope": "88 statically inspected classes plus bounded same-QQ-image runtime schemas with backed properties and generated codec accessors. Unknown primary content rejects the snapshot; optional non-content record fields may be omitted with diagnostics."
   },
   "user_reported_runtime_0_3": {
     "plugin_version": "0.3.0-experimental",
@@ -280,5 +280,33 @@
     "class": "QQNTAIOMessageAvatarView",
     "property": "record",
     "attributes": "T@\"OCMsgRecord\",&,N,V_record"
-  }
+  },
+  "user_reported_runtime_0_4": {
+    "snapshot_encode_failures": 27,
+    "snapshots_saved": 0,
+    "history_records_restored": 0,
+    "snapshot_misses": 60,
+    "badges_created": 0,
+    "footer_space_unavailable": 1,
+    "height_refreshes": 2,
+    "marked_recalled_messages": 3,
+    "installed_hooks": 25,
+    "intercepted_events": 27,
+    "account_context_available": 1,
+    "disk_failures": 0,
+    "message_kinds": "multiple types per user",
+    "result": "failed persistence and badge display; live filtering still active"
+  },
+  "version_0_5_change": "Bounded graph snapshots with shared references, ABI/image-verified runtime collection model schemas, optional non-content metadata isolation and private field-path diagnostics; footer reserves height through the actual table delegate, resolves records from the verified avatar and ignores opaque model layout assumptions.",
+  "badge_delegate_inspection_run": 43771340173,
+  "badge_delegate_evidence": [
+    {
+      "class": "AIOChatTableViewDelegate",
+      "class_method": false,
+      "selector": "tableView:heightForRowAtIndexPath:",
+      "types": "d32@0:8@16@24",
+      "imp": "0x102a3ea30"
+    }
+  ],
+  "runtime_0_5_verified": false
 }

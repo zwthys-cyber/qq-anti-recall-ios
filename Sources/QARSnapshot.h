@@ -5,3 +5,6 @@ BOOL QARModelWrite(id object, NSString *field, id value);
 id QARModelCreate(NSString *className);
 NSData *QAREncodeRecord(id record);
 id QARDecodeRecord(NSData *data);
+
+NSDictionary *QARSnapshotStatus(void);
+void QARResetSnapshotCounters(void);
