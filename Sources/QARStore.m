@@ -12,6 +12,7 @@
 
 NSString * const QARStoreChangedNotification = @"QQAntiRecall.StoreChanged";
 static dispatch_queue_t queue;
+static char recordOwnerKey;
 static NSURL *root;
 static NSString *loadedOwner;
 static NSMutableDictionary *entries;
@@ -193,6 +194,7 @@ void QARRememberMessages(id messages) {
         if (++attempted > 128) break;
         NSNumber *recall = recallValue(record);
         if (!recall || recall.longLongValue > 0) continue;
+        objc_setAssociatedObject(record, &recordOwnerKey, owner, OBJC_ASSOCIATION_COPY_NONATOMIC);
         NSDictionary *key = identity(record);
         BOOL ok = NO;
         id elements = QARModelRead(record, @"elements", &ok);
@@ -253,11 +255,11 @@ void QARMarkRecalledUpdates(id messages) {
 id QARRestoreHistory(id messages) {
     if (!QAREnabled() || ![messages isKindOfClass:NSArray.class]) return messages;
     QARRememberMessages(messages);
-    QARMarkRecalledUpdates(messages);
     NSString *owner = QARCurrentOwner();
     if (!owner) return messages;
     prepare();
     NSMutableArray *result = nil;
+    NSMutableArray *restoredNotices = [NSMutableArray new];
     NSUInteger index = 0;
     for (id incoming in messages) {
         id replacement = nil;
@@ -285,6 +287,8 @@ id QARRestoreHistory(id messages) {
             } else atomic_fetch_add(&missCount, 1);
         }
         if (replacement) {
+            objc_setAssociatedObject(replacement, &recordOwnerKey, owner, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            [restoredNotices addObject:incoming];
             if (!result) result = [[messages subarrayWithRange:NSMakeRange(0, index)] mutableCopy];
             [result addObject:replacement];
             atomic_fetch_add(&restoreCount, 1);
@@ -293,6 +297,8 @@ id QARRestoreHistory(id messages) {
         index++;
     }
     if (![owner isEqual:QARCurrentOwner()]) return messages;
+    // A history placeholder alone is not evidence that we retained its original.
+    QARMarkRecalledUpdates(restoredNotices);
     return result ? [result copy] : messages;
 }
 BOOL QARIsMarkedRecord(id record) {
@@ -300,6 +306,8 @@ BOOL QARIsMarkedRecord(id record) {
     NSNumber *recall = recallValue(record);
     if (!recall || recall.longLongValue > 0) return NO;
     NSString *owner = QARCurrentOwner();
+    NSString *recordOwner = objc_getAssociatedObject(record, &recordOwnerKey);
+    if (recordOwner && ![recordOwner isEqual:owner]) return NO;
     NSDictionary *wanted = owner ? identity(record) : nil;
     if (!wanted) return NO;
     prepare();
