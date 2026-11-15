@@ -8,8 +8,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static void report(NSString *text) {
+    NSURL *documents = [NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
+    [text writeToURL:[documents URLByAppendingPathComponent:@"fixture-result.txt"]
+         atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    fprintf(stderr, "%s\n", text.UTF8String); fflush(stderr);
+}
 static void check(BOOL condition, const char *why) {
-    if (!condition) { fprintf(stderr, "FAIL: %s\n", why); fflush(stderr); exit(1); }
+    if (!condition) { report([@"FAIL: " stringByAppendingString:@(why)]); exit(1); }
 }
 @interface FixtureAvatar : UIView
 @property(nonatomic,strong) id record;
@@ -78,15 +84,33 @@ static FixtureModel *model(id record) {
     FixtureModel *result = [NSClassFromString(@"AIOBaseCellViewModel") new]; result.record = record; return result;
 }
 static void after(dispatch_block_t block) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), block);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), block);
 }
-@interface FixtureApp : UIResponder <UIApplicationDelegate>
+@interface FixtureScene : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic,strong) UIWindow *window;
 @property(nonatomic,strong) FixtureController *controller;
+@end
+@interface FixtureApp : UIResponder <UIApplicationDelegate>
 @end
 @implementation FixtureApp
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
     (void)app; (void)options;
+    report(@"START: application delegate");
+    return YES;
+}
+- (UISceneConfiguration *)application:(UIApplication *)app
+    configurationForConnectingSceneSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options {
+    (void)app; (void)options;
+    UISceneConfiguration *configuration = [[UISceneConfiguration alloc] initWithName:@"Fixture" sessionRole:session.role];
+    configuration.delegateClass = FixtureScene.class;
+    return configuration;
+}
+@end
+@implementation FixtureScene
+- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options {
+    (void)session; (void)options;
+    check([scene isKindOfClass:UIWindowScene.class], "UIKit window scene");
+    report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
@@ -104,7 +128,7 @@ static void after(dispatch_block_t block) {
     self.controller.title = @"防撤回标识 · 模拟数据";
     self.controller.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.controller.tableView.estimatedRowHeight = 0;
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
     self.window.rootViewController = [[UINavigationController alloc] initWithRootViewController:self.controller];
     [self.window makeKeyAndVisible];
     after(^{
@@ -135,13 +159,12 @@ static void after(dispatch_block_t block) {
                     QARSetEnabled(YES); QARFixtureAccount(20002);
                     QARBadgeRefreshCellForTest(restoredCell);
                     check(!QARBadgeViewForTest(restoredCell) || QARBadgeViewForTest(restoredCell).hidden, "account switch hides old markers");
-                    puts("PASS: UIKit footer geometry, normal rows, cell reuse, history reload, dark mode, disable and account switch");
+                    report(@"PASS: UIKit footer geometry, normal rows, cell reuse, history reload, dark mode, disable and account switch");
                     fflush(stdout); exit(0);
                 });
             });
         });
     });
-    return YES;
 }
 - (void)savePreview:(NSString *)name {
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:self.window.bounds.size];
@@ -154,5 +177,5 @@ static void after(dispatch_block_t block) {
 }
 @end
 int main(int argc, char **argv) {
-    @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass(FixtureApp.class)); }
+    @autoreleasepool { report(@"START: executable"); return UIApplicationMain(argc, argv, nil, NSStringFromClass(FixtureApp.class)); }
 }

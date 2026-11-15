@@ -7,6 +7,7 @@ import platform
 import plistlib
 import shutil
 import subprocess
+import time
 
 def run(*args, **kwargs):
     kwargs.setdefault("timeout", 120)
@@ -36,6 +37,9 @@ with (app / "Info.plist").open("wb") as output:
         "LSRequiresIPhoneOS": True,
         "UIDeviceFamily": [1],
         "UILaunchScreen": {},
+        "UIApplicationSceneManifest": {"UIApplicationSupportsMultipleScenes": False,
+            "UISceneConfigurations": {"UIWindowSceneSessionRoleApplication": [{
+                "UISceneConfigurationName": "Fixture", "UISceneDelegateClassName": "FixtureScene"}]}},
     }, output)
 sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path", capture_output=True).stdout.strip()
 arch = platform.machine()
@@ -54,19 +58,33 @@ phones = [device for runtime, items in devices["devices"].items() if ".iOS-" in 
           for device in items if device.get("isAvailable") and device["name"].startswith("iPhone")]
 if not phones:
     raise RuntimeError("This runner has no available iPhone simulator")
-device = next((p for p in phones if p["state"] == "Booted"), phones[0])
+device = next((p for p in phones if p["state"] == "Booted"),
+              next((p for p in phones if p["name"] == "iPhone 17e"), phones[0]))
 udid = device["udid"]
 if device["state"] != "Booted":
     run("xcrun", "simctl", "boot", udid)
 run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=480)
 run("xcrun", "simctl", "install", udid, str(app))
-result = run("xcrun", "simctl", "launch", "--console", "--terminate-running-process",
-             udid, bundle, capture_output=True, timeout=120)
-print(result.stdout)
-print(result.stderr)
-if "PASS: UIKit footer geometry" not in result.stdout:
-    raise RuntimeError("UIKit fixture did not complete its assertions")
 container = pathlib.Path(run("xcrun", "simctl", "get_app_container", udid, bundle, "data", capture_output=True).stdout.strip())
+run("xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle, timeout=180)
+result_file = container / "Documents" / "fixture-result.txt"
+deadline = time.monotonic() + 180
+result = ""
+while time.monotonic() < deadline:
+    if result_file.exists():
+        current = result_file.read_text()
+        if current != result:
+            print(current, flush=True)
+            result = current
+        if result.startswith(("PASS:", "FAIL:")):
+            break
+    time.sleep(1)
+if not result.startswith("PASS: UIKit footer geometry"):
+    reports = pathlib.Path.home() / "Library" / "Logs" / "DiagnosticReports"
+    for path in sorted(reports.glob("QARBadgeFixture*.ips"))[-2:]:
+        print("Synthetic fixture crash report:", path.name, flush=True)
+        print(path.read_text(errors="replace")[:20000], flush=True)
+    raise RuntimeError("UIKit fixture did not pass: " + (result or "no executable progress file"))
 destination = pathlib.Path("dist")
 destination.mkdir(exist_ok=True)
 for name in ("badge-light.png", "badge-dark.png"):

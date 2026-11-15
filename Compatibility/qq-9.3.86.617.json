@@ -274,5 +274,11 @@
     "positive_recall_time_writes": 58
   },
   "version_0_4_change": "Account-isolated bounded local snapshots, restore matching recalled records in verified history callbacks, and a UIKit footer badge keyed to the saved recall marker. No native database writes; exact version and ABI gates.",
-  "runtime_0_4_verified": false
+  "runtime_0_4_verified": false,
+  "badge_record_property": {
+    "inspection_run": 43766932491,
+    "class": "QQNTAIOMessageAvatarView",
+    "property": "record",
+    "attributes": "T@\"OCMsgRecord\",&,N,V_record"
+  }
 }
