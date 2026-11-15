@@ -24,9 +24,14 @@
     self.label.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption2]
         scaledFontForFont:[UIFont systemFontOfSize:11 weight:UIFontWeightMedium]];
     self.label.adjustsFontForContentSizeCategory = YES;
-    self.label.textColor = UIColor.systemTealColor;
+    UIColor *ink = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+        return traits.userInterfaceStyle == UIUserInterfaceStyleDark ?
+            [UIColor colorWithRed:0.46 green:0.85 blue:0.91 alpha:1] :
+            [UIColor colorWithRed:0.08 green:0.43 blue:0.51 alpha:1];
+    }];
+    self.label.textColor = ink;
     self.icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.uturn.backward.circle.fill"]];
-    self.icon.tintColor = UIColor.systemTealColor;
+    self.icon.tintColor = ink;
     self.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
         return traits.userInterfaceStyle == UIUserInterfaceStyleDark ?
             [UIColor colorWithRed:0.10 green:0.23 blue:0.27 alpha:1] :
@@ -44,6 +49,7 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat h = self.bounds.size.height;
+    self.layer.cornerRadius = h / 2;
     self.icon.frame = CGRectMake(8, (h - 12) / 2, 12, 12);
     self.label.frame = CGRectMake(25, 3, MAX(0, self.bounds.size.width - 32), h - 6);
 }
@@ -193,7 +199,7 @@ static void refresh(UITableViewCell *cell) {
 }
 static void avatarLayout(id self, SEL cmd) {
     ((void (*)(id, SEL))hooks[0].original)(self, cmd);
-    if ([self isKindOfClass:UIView.class]) refresh(parentCell(self));
+    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) refresh(parentCell(self));
 }
 static void avatarRecord(id self, SEL cmd, id record) {
     ((void (*)(id, SEL, id))hooks[6].original)(self, cmd, record);

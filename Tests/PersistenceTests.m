@@ -156,10 +156,11 @@ int main(int argc, const char **argv) {
             check(QARModelWrite(object, spec[@"name"], value) && [QARModelRead(object, spec[@"name"], NULL) isEqual:value],
                 "primitive model ABI round trip");
         }
-        QARForgetMessageIDs(@[@101]);
+        QARStoreDropMemoryForTest();
+        QARForgetMessageIDs(@[@999]);
         other = @[recalled];
         check(QARRestoreHistory(other) == other && !QARIsMarkedRecord(restored[0]),
-            "ordinary deletion removes saved content and never resurrects it");
+            "ordinary deletion by a changed local ID removes persisted aliases and cannot resurrect content");
         QARClearSavedMessages();
         check(!QARIsMarkedRecord(normal), "clear removes markers");
         NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:
@@ -169,6 +170,36 @@ int main(int argc, const char **argv) {
             options:0 error:nil] encoding:NSUTF8StringEncoding];
         check(![diagnostics containsString:@"Synthetic message"] && ![diagnostics containsString:@"fixture-peer"],
             "diagnostics never include message text or peer identifiers");
+        QARClearSavedMessages();
+        for (int batch = 0; batch < 5; batch++) {
+            NSMutableArray *records = [NSMutableArray new];
+            for (int index = 0; index < 110; index++) {
+                long long ident = 10000 + batch * 110 + index;
+                [records addObject:QARFixtureMessage(ident, ident, @"bounded-peer", 0, @"Synthetic bounded snapshot")];
+            }
+            QARRememberMessages(records);
+        }
+        check([QARStoreStatus()[@"evicted_snapshots"] unsignedIntegerValue] == 38, "512-record retention limit evicts the oldest records");
+        NSURL *storage = [directory URLByAppendingPathComponent:[QARCurrentOwner() stringByAppendingString:@".plist"]];
+        NSDictionary *envelope = [NSDictionary dictionaryWithContentsOfURL:storage];
+        check([envelope[@"entries"] count] == 512, "persisted envelope is bounded");
+        check([[@"truncated" dataUsingEncoding:NSUTF8StringEncoding] writeToURL:storage atomically:YES], "write corrupt test storage");
+        QARStoreDropMemoryForTest();
+        other = @[QARFixtureMessage(10549, 10549, @"bounded-peer", 1700000000, nil)];
+        check(QARRestoreHistory(other) == other, "corrupt storage never substitutes a record");
+        QARClearSavedMessages();
+        NSURL *blockedRoot = [directory URLByAppendingPathComponent:@"temporarily-unavailable"];
+        check([[@"fixture obstruction" dataUsingEncoding:NSUTF8StringEncoding] writeToURL:blockedRoot atomically:YES],
+            "create blocked storage fixture");
+        QARStoreUseTestDirectory(blockedRoot);
+        QARRememberMessages(@[normal]);
+        check(![QARStoreStatus()[@"last_disk_write_succeeded"] boolValue], "storage write failure reported");
+        check([NSFileManager.defaultManager removeItemAtURL:blockedRoot error:nil], "remove fixture obstruction");
+        QARRememberMessages(@[normal]);
+        check([QARStoreStatus()[@"last_disk_write_succeeded"] boolValue], "unchanged messages retry an earlier failed disk write");
+        QARStoreDropMemoryForTest();
+        check([QARFixtureBody(QARRestoreHistory(@[QARFixtureMessage(102, 100, @"fixture-peer", 1700000000, nil)])[0])
+            isEqual:@"Normal"], "retried snapshot survives a new memory session");
         puts("PASS: disk restart, deep copy, history callbacks, identity isolation, deletion, badge resolution and archive guards");
     }
     return 0;

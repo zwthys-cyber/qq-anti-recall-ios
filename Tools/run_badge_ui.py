@@ -8,7 +8,16 @@ import shutil
 import subprocess
 
 def run(*args, **kwargs):
-    return subprocess.run(args, check=True, text=True, **kwargs)
+    kwargs.setdefault("timeout", 120)
+    print("Badge fixture command:", " ".join(args[:4]), flush=True)
+    try:
+        return subprocess.run(args, check=True, text=True, **kwargs)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        if error.stdout:
+            print(error.stdout, flush=True)
+        if error.stderr:
+            print(error.stderr, flush=True)
+        raise
 
 root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "qar-badge-ui"
 app = root / "QARBadgeFixture.app"
@@ -48,7 +57,7 @@ device = next((p for p in phones if p["state"] == "Booted"), phones[0])
 udid = device["udid"]
 if device["state"] != "Booted":
     run("xcrun", "simctl", "boot", udid)
-run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=180)
+run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=480)
 run("xcrun", "simctl", "install", udid, str(app))
 result = run("xcrun", "simctl", "launch", "--console", "--terminate-running-process",
              udid, bundle, capture_output=True, timeout=120)

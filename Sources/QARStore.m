@@ -16,6 +16,7 @@ static char recordOwnerKey;
 static NSURL *root;
 static NSString *loadedOwner;
 static NSMutableDictionary *entries;
+static BOOL pendingWrite;
 static atomic_uint_fast64_t savedCount, restoreCount, missCount, encodeFailures, decodeFailures;
 static atomic_uint_fast64_t diskFailures, missingOwner, evictions, markedCount;
 static atomic_bool diskReady;
@@ -90,6 +91,7 @@ static NSURL *fileForOwner(NSString *owner) {
 static void loadOwner(NSString *owner) {
     if ([loadedOwner isEqual:owner]) return;
     loadedOwner = [owner copy];
+    pendingWrite = NO;
     entries = [NSMutableDictionary new];
     NSURL *file = fileForOwner(owner);
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:file.path error:nil];
@@ -113,6 +115,11 @@ static void loadOwner(NSString *owner) {
             ![entry[@"when"] isKindOfClass:NSNumber.class] ||
             ![entry[@"recalled"] isKindOfClass:NSNumber.class] ||
             (payload && (![payload isKindOfClass:NSData.class] || [payload length] > 262144))) return;
+        id aliases = entry[@"local_ids"];
+        if (aliases) {
+            if (![aliases isKindOfClass:NSArray.class] || [aliases count] > 16) return;
+            for (id value in aliases) if (![value isKindOfClass:NSNumber.class]) return;
+        }
         bytes += [payload length];
         if (bytes > maxBytes) return;
     }
@@ -157,7 +164,7 @@ static BOOL writeOwner(NSString *owner) {
 #endif
     NSFileManager *manager = NSFileManager.defaultManager;
     if (![manager createDirectoryAtURL:root withIntermediateDirectories:YES attributes:attrs error:nil]) {
-        atomic_fetch_add(&diskFailures, 1); atomic_store(&diskReady, false); return NO;
+        atomic_fetch_add(&diskFailures, 1); atomic_store(&diskReady, false); pendingWrite = YES; return NO;
     }
     [root setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
     NSData *data = [NSPropertyListSerialization dataWithPropertyList:
@@ -172,6 +179,7 @@ static BOOL writeOwner(NSString *owner) {
     if (saved) [manager setAttributes:@{NSFilePosixPermissions: @0600} ofItemAtPath:file.path error:nil];
     else atomic_fetch_add(&diskFailures, 1);
     atomic_store(&diskReady, saved);
+    pendingWrite = !saved;
     return saved;
 }
 static void changed(void) {
@@ -216,7 +224,7 @@ void QARRememberMessages(id messages) {
                              @"recalled": old[@"recalled"] ?: @NO, @"when": @(NSDate.date.timeIntervalSince1970)};
             count++;
         }
-        if (count) {
+        if (count || pendingWrite) {
             trim();
             if (writeOwner(owner)) atomic_fetch_add(&savedCount, count);
         }
@@ -240,15 +248,24 @@ void QARMarkRecalledUpdates(id messages) {
         for (NSDictionary *wanted in keys) {
             NSString *key = findKey(wanted) ?: wanted[@"key"];
             NSDictionary *old = entries[key];
-            if ([old[@"recalled"] boolValue]) continue;
+            NSMutableArray *aliases = [old[@"local_ids"] mutableCopy] ?: [NSMutableArray new];
+            NSNumber *localID = wanted[@"msg_id"];
+            BOOL newAlias = localID.longLongValue != 0 && ![aliases containsObject:localID] &&
+                ![old[@"identity"][@"msg_id"] isEqual:localID];
+            if ([old[@"recalled"] boolValue] && !newAlias) continue;
+            if (newAlias) {
+                [aliases addObject:localID];
+                if (aliases.count > 16) [aliases removeObjectAtIndex:0];
+            }
             NSMutableDictionary *entry = old ? [old mutableCopy] :
                 [@{@"identity": wanted, @"when": @(NSDate.date.timeIntervalSince1970)} mutableCopy];
             entry[@"recalled"] = @YES;
+            entry[@"local_ids"] = aliases;
             entries[key] = entry;
-            atomic_fetch_add(&markedCount, 1);
+            if (![old[@"recalled"] boolValue]) atomic_fetch_add(&markedCount, 1);
             modified = YES;
         }
-        if (modified) { trim(); writeOwner(owner); }
+        if (modified || pendingWrite) { trim(); writeOwner(owner); }
     });
     if (modified) changed();
 }
@@ -331,7 +348,10 @@ void QARForgetMessageIDs(id ids) {
         loadOwner(owner);
         BOOL modified = NO;
         for (NSString *key in [entries.allKeys copy]) {
-            if ([values containsObject:entries[key][@"identity"][@"msg_id"]]) {
+            NSArray *aliases = entries[key][@"local_ids"] ?: @[];
+            BOOL aliasMatch = NO;
+            for (NSNumber *value in aliases) if ([values containsObject:value]) { aliasMatch = YES; break; }
+            if (aliasMatch || [values containsObject:entries[key][@"identity"][@"msg_id"]]) {
                 [entries removeObjectForKey:key]; modified = YES;
             }
         }
