@@ -72,8 +72,8 @@
     if (!presenter || [presenter isKindOfClass:UIAlertController.class]) return;
     NSDictionary *status = QARStatus();
     NSString *message = [NSString stringWithFormat:
-        @"QQ %@\n已加载接口：%@\n已拦截通知：%@\n\n实验适配：请检查单聊、群聊及重启后的消息保留情况。",
-        status[@"build_version"], status[@"installed_hooks"], status[@"intercepted_events"]];
+        @"插件 %@\nQQ %@\n已加载接口：%@\n本次拦截回调：%@\n\n点击「清零并开始测试」后，让另一账号撤回一条新消息，再导出诊断。回调计数不代表消息已保留。",
+        status[@"plugin_version"], status[@"build_version"], status[@"installed_hooks"], status[@"intercepted_events"]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"QQ 防撤回 · 实验版"
         message:message preferredStyle:UIAlertControllerStyleAlert];
     if ([status[@"installed_hooks"] unsignedIntegerValue] > 0) {
@@ -82,6 +82,8 @@
                 QARSetEnabled(!QAREnabled());
             }]];
     }
+    [alert addAction:[UIAlertAction actionWithTitle:@"清零并开始测试" style:UIAlertActionStyleDefault
+        handler:^(__unused UIAlertAction *action) { QARResetDiagnostics(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"导出诊断" style:UIAlertActionStyleDefault
         handler:^(__unused UIAlertAction *action) {
             NSData *data = [NSJSONSerialization dataWithJSONObject:QARStatus()

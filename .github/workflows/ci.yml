@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   build-test:
-    runs-on: macos-15-intel
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -22,12 +22,17 @@ jobs:
           "$RUNNER_TEMP/hook-tests"
       - name: Compile and exercise version-specific adapters
         run: |
-          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Tests/AdapterTests.m -framework Foundation -o "$RUNNER_TEMP/adapter-tests"
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Tests/AdapterTests.m -framework Foundation -o "$RUNNER_TEMP/adapter-tests"
           "$RUNNER_TEMP/adapter-tests"
+      - name: Test incoming adapters and observer pass-through
+        run: |
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Tests/IncomingTests.m -framework Foundation -o "$RUNNER_TEMP/incoming-tests"
+          "$RUNNER_TEMP/incoming-tests" --mismatch
+          "$RUNNER_TEMP/incoming-tests"
       - name: Build iOS arm64 injection library
         run: |
           mkdir -p dist
-          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARControl.m -framework Foundation -framework UIKit -framework CoreGraphics -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
+          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARControl.m -framework Foundation -framework UIKit -framework CoreGraphics -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
           codesign --force --sign - dist/QQAntiRecall.dylib
       - name: Verify library architecture, platform and signature
         run: python3 Tools/verify_build.py dist/QQAntiRecall.dylib

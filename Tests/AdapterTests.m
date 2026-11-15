@@ -2,6 +2,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "QARAdapter.h"
+#import "QARTrace.h"
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,7 +79,7 @@ int main(void) {
         [listener onMsgRecall:1 peerUid:nil seq:0];
         check(forwarded == 1, "enabled callback is suppressed");
         record.recallTime = 123456789;
-        check(record.recallTime == 0, "enabled setter clears positive recall timestamp");
+        check(record.recallTime == 123456789, "timestamp alone does not erase recall state without preserving content");
         record.recallTime = -1;
         check(record.recallTime == -1, "non-recall sentinel preserved");
         [listener sendRecall];
@@ -102,6 +103,19 @@ int main(void) {
         NSString *text = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
         check(![text containsString:@"synthetic-peer"], "diagnostics contain no peer IDs");
         check(![QARStatus()[@"runtime_qq_verified"] boolValue], "fixture success is not QQ runtime proof");
+        QARResetDiagnostics();
+        check([QARStatus()[@"kernel_recall_events"] unsignedLongLongValue] == 0 &&
+              [QARStatus()[@"positive_recall_time_writes"] unsignedLongLongValue] == 0 &&
+              [QARStatus()[@"trace_samples"] count] == 0, "reset isolates the next device experiment");
+        dispatch_apply(500, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(size_t i) {
+            if (i % 17 == 0) QARResetTrace();
+            QARTraceEvent(@"synthetic_bounded_event");
+        });
+        check(QARTraceSnapshot().count <= 2, "trace remains bounded across concurrent reset and capture");
+        for (NSDictionary *sample in QARTraceSnapshot()) {
+            check(sample.count <= 3 && sample[@"event"] && sample[@"qq_image_offsets"],
+                  "trace exports only controlled event metadata");
+        }
         puts("PASS: exact build gates, recall adapters, full-width forwarding, concurrency, privacy.");
     }
     return 0;

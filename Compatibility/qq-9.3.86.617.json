@@ -6,8 +6,8 @@
   "input_ipa_sha256": "dc7dbd5c1d336d16be17fc7361ca0ec0756a37f24cd494de1627242fce4a73fe",
   "main_executable_sha256": "60402733db43cb8b61ea818bd7dd98d2a3d7cf4d84236f3555ee9ab37c4495b0",
   "source_export_run": 43715591869,
-  "inspection_run": 43718304175,
-  "inspection_source": "45c398a69bef9e9adeb34467d423a3a0cf1be7a2",
+  "inspection_run": 43721273602,
+  "inspection_source": "33db5a936d0608b01faab9bfca37696b31201955",
   "scope": "Static signatures only; not an execution trace or QQ runtime proof",
   "hooks": [
     {
@@ -15,21 +15,95 @@
       "class_method": false,
       "selector": "setRecallTime:",
       "types": "v24@0:8q16",
-      "imp": "0x106e64fd4"
+      "imp": "0x106e64fd4",
+      "mode": "observe_and_forward"
     },
     {
       "class": "_TtC9NTAIOChat20NTAIOFloatEarManager",
       "class_method": false,
       "selector": "onRecvRecallMsg:",
       "types": "v24@0:8@16",
-      "imp": "0x108d5fe40"
+      "imp": "0x108d5fe40",
+      "mode": "suppress_when_enabled"
     },
     {
       "class": "KTIKernelMsgListener",
       "class_method": false,
       "selector": "onMsgRecall:peerUid:seq:",
       "types": "v36@0:8i16@20Q28",
-      "imp": "0x10bb8ac8c"
+      "imp": "0x10bb8ac8c",
+      "mode": "suppress_when_enabled"
+    },
+    {
+      "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
+      "class_method": false,
+      "selector": "onMsgRecall:peerUid:seq:",
+      "types": "v36@0:8i16@20Q28",
+      "imp": "0x106fce7b8",
+      "mode": "suppress_when_enabled"
+    },
+    {
+      "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
+      "class_method": false,
+      "selector": "onRecvMsg:",
+      "types": "v24@0:8@16",
+      "imp": "0x106fce0c4",
+      "mode": "observe_and_forward"
+    },
+    {
+      "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
+      "class_method": false,
+      "selector": "onMsgInfoListUpdate:",
+      "types": "v24@0:8@16",
+      "imp": "0x106fcebc8",
+      "mode": "observe_and_forward"
+    },
+    {
+      "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
+      "class_method": false,
+      "selector": "onMsgDelete:msgIds:",
+      "types": "v32@0:8@16@24",
+      "imp": "0x106fcedd0",
+      "mode": "observe_and_forward"
+    },
+    {
+      "class": "QQMessageRecallNetEngine",
+      "class_method": false,
+      "selector": "parseC2CRecallNotify:bufferLen:subcmd:model:",
+      "types": "B40@0:8r^v16i24i28^{RecallModel=}32",
+      "imp": "0x10e7f363c",
+      "mode": "suppress_when_enabled"
+    },
+    {
+      "class": "QQMessageRecallPackageHandler",
+      "class_method": true,
+      "selector": "parseC2CRecallNotify:bufferLen:subcmd:model:",
+      "types": "B40@0:8r^v16i24i28^v32",
+      "imp": "0x10e7f3678",
+      "mode": "suppress_when_enabled"
+    },
+    {
+      "class": "QQMessageRecallPackageHandler",
+      "class_method": true,
+      "selector": "parseC2CRecallInOut:",
+      "types": "v24@0:8^v16",
+      "imp": "0x10e7f392c",
+      "mode": "suppress_when_enabled"
+    },
+    {
+      "class": "OCMsgRecord",
+      "class_method": false,
+      "selector": "setKt_recallTimeFromCodec:",
+      "types": "v24@0:8@16",
+      "imp": "0x10bc57d58",
+      "mode": "observe_and_forward"
     }
-  ]
+  ],
+  "user_reported_runtime": {
+    "plugin_version": "0.1.0-experimental",
+    "installed_hooks": 3,
+    "single_chat_message_retention": "failed: message disappeared",
+    "recall_callback_hits": 0,
+    "positive_recall_timestamp_writes": 18
+  }
 }

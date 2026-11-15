@@ -6,3 +6,5 @@ void QARInstallAdapters(NSDictionary *info);
 BOOL QAREnabled(void);
 void QARSetEnabled(BOOL enabled);
 NSDictionary *QARStatus(void);
+
+void QARResetDiagnostics(void);
