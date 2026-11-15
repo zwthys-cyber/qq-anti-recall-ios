@@ -348,7 +348,7 @@ static BOOL collectModels(id node, NSUInteger depth, NSUInteger *count, NSMutabl
 }
 // Validate the reference graph before allocating models; shared DAG nodes are allowed,
 // cyclic or unresolved references in a damaged local archive are rejected.
-static BOOL validateReferences(id node, NSDictionary *definitions, NSMutableSet *active, NSMutableSet *done, NSUInteger depth) {
+static BOOL validateReferences(id node, NSDictionary *definitions, NSMutableSet *active, NSMutableSet *done, NSMutableArray *order, NSUInteger depth) {
     if (depth > 48) return NO;
     NSString *tag = node[@"t"]; id value = node[@"v"];
     if ([tag isEqual:@"o2"] || [tag isEqual:@"r"]) {
@@ -357,14 +357,14 @@ static BOOL validateReferences(id node, NSDictionary *definitions, NSMutableSet 
         if ([done containsObject:ident]) return YES;
         [active addObject:ident];
         for (id child in [definitions[ident][@"v"] allValues])
-            if (!validateReferences(child, definitions, active, done, depth + 1)) return NO;
-        [active removeObject:ident]; [done addObject:ident]; return YES;
+            if (!validateReferences(child, definitions, active, done, order, depth + 1)) return NO;
+        [active removeObject:ident]; [done addObject:ident]; [order addObject:ident]; return YES;
     }
     if ([tag isEqual:@"a"] || [tag isEqual:@"S"] || [tag isEqual:@"m"]) for (id child in value) {
         if ([tag isEqual:@"m"]) {
-            if (!validateReferences(child[0], definitions, active, done, depth + 1) ||
-                !validateReferences(child[1], definitions, active, done, depth + 1)) return NO;
-        } else if (!validateReferences(child, definitions, active, done, depth + 1)) return NO;
+            if (!validateReferences(child[0], definitions, active, done, order, depth + 1) ||
+                !validateReferences(child[1], definitions, active, done, order, depth + 1)) return NO;
+        } else if (!validateReferences(child, definitions, active, done, order, depth + 1)) return NO;
     }
     return YES;
 }
@@ -427,13 +427,14 @@ id QARDecodeRecord(NSData *data) {
             ![graph[@"c"] isEqual:@"OCMsgRecord"]) return nil;
         NSMutableDictionary *definitions = [NSMutableDictionary new], *models = [NSMutableDictionary new];
         NSUInteger count = 0;
+        NSMutableArray *order = [NSMutableArray new];
         if (!collectModels(graph, 0, &count, definitions) ||
-            !validateReferences(graph, definitions, [NSMutableSet new], [NSMutableSet new], 0)) return nil;
-        for (NSNumber *identifier in definitions) {
+            !validateReferences(graph, definitions, [NSMutableSet new], [NSMutableSet new], order, 0)) return nil;
+        for (NSNumber *identifier in order) {
             id model = QARModelCreate(definitions[identifier][@"c"]);
             if (!model) return nil; models[identifier] = model;
         }
-        for (NSNumber *identifier in definitions) {
+        for (NSNumber *identifier in order) {
             NSDictionary *definition = definitions[identifier], *fields = definition[@"v"];
             NSArray *specs = schemaForName(definition[@"c"]);
             NSSet *names = [NSSet setWithArray:[specs valueForKey:@"name"]];
@@ -442,7 +443,11 @@ id QARDecodeRecord(NSData *data) {
             if (record) {
                 if (![requiredRecordFields() isSubsetOfSet:[NSSet setWithArray:fields.allKeys]]) return nil;
             } else if (fields.count != specs.count) return nil;
-            for (NSString *field in fields) {
+            // Match QQ's inspected schema order (identity before content), with each
+            // child object already populated in dependency order.
+            for (NSDictionary *spec in specs) {
+                NSString *field = spec[@"name"];
+                if (!fields[field]) continue;
                 BOOL ok = NO; id child = decodeValue(fields[field], models, &ok);
                 if (!ok || !QARModelWrite(models[identifier], field, child)) return nil;
             }

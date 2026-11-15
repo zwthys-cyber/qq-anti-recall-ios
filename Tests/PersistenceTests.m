@@ -57,6 +57,19 @@ static void registerCallback(const char *name, const char *selector, const char 
 - (void)setKt_captionFromCodec:(id)value { self.caption = value; }
 - (void)setKt_identifierFromCodec:(id)value { self.identifier = [value unsignedLongLongValue]; }
 @end
+@interface OCFixtureEnvelope : NSObject
+@property(nonatomic,strong) OCFixtureSupplement *item;
+- (void)setKt_itemFromCodec:(id)value;
+@end
+@implementation OCFixtureEnvelope
+@synthesize item = _item;
+- (void)setItem:(OCFixtureSupplement *)item {
+    check(!item || [item.caption isEqual:@"Synthetic supplemental payload"],
+        "child model must be populated before its parent setter receives it");
+    _item = item;
+}
+- (void)setKt_itemFromCodec:(id)value { self.item = value; }
+@end
 @interface OCFixtureUnsupported : NSObject
 @property(nonatomic,copy) NSString *caption;
 @property(nonatomic) double unsupportedScalar;
@@ -87,9 +100,11 @@ static id richMessage(long long ident) {
     }
     [elements addObject:elements[1]]; // Shared media object: copied once and referenced twice.
     QARModelWrite(record, @"elements", elements);
+    QARModelWrite(record, @"records", @[QARFixtureMessage(7000, 7000, @"rich-fixture-peer", 0, @"Synthetic quoted original")]);
     OCFixtureSupplement *supplement = [OCFixtureSupplement new];
     supplement.caption = @"Synthetic supplemental payload"; supplement.identifier = ULLONG_MAX;
-    QARModelWrite(record, @"emojiLikesList", @[supplement]);
+    OCFixtureEnvelope *envelope = [OCFixtureEnvelope new]; envelope.item = supplement;
+    QARModelWrite(record, @"emojiLikesList", @[envelope]);
     NSMutableDictionary *metadata = [NSMutableDictionary new];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wobjc-circular-container"
@@ -105,12 +120,18 @@ static void checkRich(id record) {
     NSArray *pairs = @[@[@"picElement", @"sourcePath"], @[@"pttElement", @"filePath"],
         @[@"videoElement", @"filePath"], @[@"fileElement", @"filePath"],
         @[@"replyElement", @"sourceMsgText"], @[@"faceElement", @"faceText"]];
+    NSArray *classes = @[@"OCPicElement", @"OCPttElement", @"OCVideoElement", @"OCFileElement", @"OCReplyElement", @"OCFaceElement"];
     for (NSUInteger i = 0; i < pairs.count; i++) {
         id body = QARModelRead(elements[i + 1], pairs[i][0], NULL);
-        check([QARModelRead(body, pairs[i][1], NULL) hasPrefix:@"synthetic-fixture/"], "media locator and reply payload preserved");
+        check([NSStringFromClass(object_getClass(body)) isEqual:classes[i]] &&
+            [QARModelRead(body, pairs[i][1], NULL) isEqual:[@"synthetic-fixture/" stringByAppendingString:classes[i]]],
+            "exact media class, locator and reply payload preserved");
     }
+    check([QARFixtureBody([QARModelRead(record, @"records", NULL) firstObject]) isEqual:@"Synthetic quoted original"],
+        "quoted record body survives nested graph restoration");
     check(elements[1] == elements[7], "shared model references preserve identity");
-    OCFixtureSupplement *extra = [QARModelRead(record, @"emojiLikesList", NULL) firstObject];
+    OCFixtureEnvelope *envelope = [QARModelRead(record, @"emojiLikesList", NULL) firstObject];
+    OCFixtureSupplement *extra = envelope.item;
     check([extra.caption isEqual:@"Synthetic supplemental payload"] && extra.identifier == ULLONG_MAX,
         "runtime schema and unsigned 64-bit values survive the binary plist");
 }
@@ -222,6 +243,16 @@ int main(int argc, const char **argv) {
         check(QAREncodeRecord(unsupported) == nil, "unsupported element fails the entire snapshot rather than losing content");
         id rich = richMessage(501);
         checkRich(QARDecodeRecord(QAREncodeRecord(rich)));
+        for (id element in QARModelRead(rich, @"elements", NULL)) {
+            id standalone = QARFixtureMessage(502, 502, @"rich-fixture-peer", 0, nil);
+            QARModelWrite(standalone, @"elements", @[element]);
+            if ([QARModelRead(element, @"elementType", NULL) intValue] != 7)
+                QARModelWrite(standalone, @"records", @[[NSObject new]]);
+            id decoded = QARDecodeRecord(QAREncodeRecord(standalone));
+            id restoredElement = [QARModelRead(decoded, @"elements", NULL) firstObject];
+            check(restoredElement && [QARModelRead(restoredElement, @"elementType", NULL)
+                isEqual:QARModelRead(element, @"elementType", NULL)], "individual media messages survive irrelevant auxiliary records");
+        }
         check([QARSnapshotStatus()[@"optional_fields_omitted"] unsignedIntegerValue] >= 2,
             "optional cyclic and unsupported metadata does not discard body");
         NSString *codecJSON = [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:QARSnapshotStatus()

@@ -101,6 +101,7 @@ for name in ("badge-light.png", "badge-dark.png"):
     "real_qq_runtime_verified": False,
     "simulator_runtime_filter": preferred_runtime, "simulator_device": device["name"],
     "xcode": run("xcodebuild", "-version", capture_output=True).stdout.strip(),
-    "checks": ["footer_geometry", "normal_row", "reuse", "history_disk_restore",
+    "checks": ["opaque_view_model", "false_bind_result", "actual_delegate_height",
+               "unrelated_table_unchanged", "no_height_query_recursion", "footer_geometry", "normal_row", "reuse", "history_disk_restore",
                "dark_mode_render", "disabled", "account_switch"],
 }, indent=2) + "\n")
