@@ -4,6 +4,7 @@
 #import "QARBadge.h"
 #import "QARFlash.h"
 #import "QARSettings.h"
+#import "QARDeviceDiagnostics.h"
 
 static NSDictionary *controlStatus(void) {
     NSMutableDictionary *status = [QARStatus() mutableCopy];
@@ -11,6 +12,7 @@ static NSDictionary *controlStatus(void) {
     status[@"recall_badge"] = badge;
     status[@"flash_retention"] = QARFlashStatus();
     status[@"settings_entry"] = QARSettingsStatus();
+    status[@"device_name_integration"] = QARDeviceDiagnosticsStatus();
     status[@"installed_hooks"] = @([status[@"installed_hooks"] unsignedIntegerValue] + [badge[@"installed_hooks"] unsignedIntegerValue]);
     NSMutableDictionary *hooks = [status[@"hook_results"] mutableCopy];
     [hooks addEntriesFromDictionary:badge[@"hook_results"]];
@@ -89,7 +91,7 @@ void QAROpenSettingsPanel(UIViewController *presenter) {
 }
 static void installAll(void) {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
-    QARInstallAdapters(info); QARInstallBadge(info); QARInstallFlash(info); QARInstallSettings(info);
+    QARInstallAdapters(info); QARInstallBadge(info); QARInstallFlash(info); QARInstallSettings(info); QARInstallDeviceDiagnostics(info);
 }
 __attribute__((constructor)) static void QARStart(void) {
     @autoreleasepool {

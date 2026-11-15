@@ -3,6 +3,7 @@
 #import "QARBadge.h"
 #import "QARFlash.h"
 #import "QARSettings.h"
+#import "QARDeviceDiagnostics.h"
 #import <objc/message.h>
 #import "QARSnapshot.h"
 #import "QARStore.h"
@@ -194,6 +195,16 @@ static void testFlash(void) {
     report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
     testFlash(); testSettings();
+    NSArray *publicAssets = QARDevicePublicAssets(@[
+        @"https://imgcache.qq.com/app/device.js?token=private-fixture#secret",
+        @"https://imgcache.qq.com/app/device.js?uin=private-fixture",
+        @"https://user:private-fixture@imgcache.qq.com/app/other.js",
+        @"https://imgcache.qq.com.evil.invalid/app/device.js",
+        @"http://imgcache.qq.com/app/device.js", @"https://club.vip.qq.com/private?cookie=secret",
+        @"https://qzonestyle.gtimg.cn/assets/device-v2.js", @123]);
+    check([publicAssets isEqual:@[@"https://imgcache.qq.com/app/device.js",
+        @"https://qzonestyle.gtimg.cn/assets/device-v2.js"]], "device diagnostics reject credentials and unrelated hosts, strip query/fragment and deduplicate");
+    check(![QARDeviceDiagnosticsStatus()[@"submission_implemented"] boolValue], "unimplemented server submission is never reported as working");
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
     registerFixture(FixtureModel.class, "AIOBaseCellViewModel");

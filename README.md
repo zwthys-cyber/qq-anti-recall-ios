@@ -25,3 +25,9 @@
 用户确认的是 0.5.0 消息防撤回；0.6.0 提示与闪照功能仍需真机确认。runtime_qq_verified 保留 false，不能用 Hook 安装数代替真机效果。闪照诊断在 flash_retention：decrypt_calls、images_saved、unsupported_results、save_failures 与 hook_active。
 
 [历次接口证据](Compatibility/qq-9.3.86.617.json) · [0.4.0 逐项日志分析](docs/runtime-0.4.0-analysis.md) · [闪照静态接口检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43775209334)
+
+## 自定义设备名：尚未实现好友可见提交
+
+用户要求任意文字并让好友看到，不能用本机文字替换代替。已定位 QQ 的官方页面及原生路由，但云端无登录状态时页面跳转到统一登录，无法核对当前提交接口。静态检查确认 NTSettingService.getDeviceName 读取设备自身名称，因此没有把它当作在线设备名接口修改。
+
+本版只增加受限的页面接口诊断。安装后在 QQ 原有设置里打开截图中的“自定义设备名”页面，等待约 10 秒，再从插件设置导出诊断。device_name_integration.public_script_assets 只保留腾讯 CDN 的公开 .js 地址，移除查询参数及片段；不读取 Cookie、输入文字、账号或请求体，不提交设备名更改。submission_implemented 与 friend_visible_verified 明确为 false。取得实际页面脚本证据后才能继续适配，当前不能承诺任意文字已对好友生效。
