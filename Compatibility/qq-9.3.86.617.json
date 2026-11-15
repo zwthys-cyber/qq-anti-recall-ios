@@ -1,0 +1,35 @@
+{
+  "schema": "qq-anti-recall-static-evidence-v1",
+  "short_version": "9.3.86",
+  "build_version": "9.3.86.617",
+  "bundle_id": "com.tencent.mqq",
+  "input_ipa_sha256": "dc7dbd5c1d336d16be17fc7361ca0ec0756a37f24cd494de1627242fce4a73fe",
+  "main_executable_sha256": "60402733db43cb8b61ea818bd7dd98d2a3d7cf4d84236f3555ee9ab37c4495b0",
+  "source_export_run": 43715591869,
+  "inspection_run": 43718304175,
+  "inspection_source": "45c398a69bef9e9adeb34467d423a3a0cf1be7a2",
+  "scope": "Static signatures only; not an execution trace or QQ runtime proof",
+  "hooks": [
+    {
+      "class": "OCMsgRecord",
+      "class_method": false,
+      "selector": "setRecallTime:",
+      "types": "v24@0:8q16",
+      "imp": "0x106e64fd4"
+    },
+    {
+      "class": "_TtC9NTAIOChat20NTAIOFloatEarManager",
+      "class_method": false,
+      "selector": "onRecvRecallMsg:",
+      "types": "v24@0:8@16",
+      "imp": "0x108d5fe40"
+    },
+    {
+      "class": "KTIKernelMsgListener",
+      "class_method": false,
+      "selector": "onMsgRecall:peerUid:seq:",
+      "types": "v36@0:8i16@20Q28",
+      "imp": "0x10bb8ac8c"
+    }
+  ]
+}

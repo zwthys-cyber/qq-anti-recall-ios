@@ -7,14 +7,37 @@ on:
 permissions:
   contents: read
 jobs:
-  runtime-tests:
+  build-test:
     runs-on: macos-15-intel
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+      - name: Test Mach-O metadata formats
+        run: python3 -m unittest discover -s Tests -p 'test_*.py' -v
       - name: Compile and exercise guarded Objective-C hooks
         run: |
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Tests/HookTests.m -framework Foundation -o "$RUNNER_TEMP/hook-tests"
           "$RUNNER_TEMP/hook-tests"
+      - name: Compile and exercise version-specific adapters
+        run: |
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Tests/AdapterTests.m -framework Foundation -o "$RUNNER_TEMP/adapter-tests"
+          "$RUNNER_TEMP/adapter-tests"
+      - name: Build iOS arm64 injection library
+        run: |
+          mkdir -p dist
+          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARControl.m -framework Foundation -framework UIKit -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
+          codesign --force --sign - dist/QQAntiRecall.dylib
+      - name: Verify library architecture, platform and signature
+        run: python3 Tools/verify_build.py dist/QQAntiRecall.dylib
+      - name: Retain plugin and build evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: QQAntiRecall-9.3.86.617-arm64-experimental
+          path: |
+            dist/QQAntiRecall.dylib
+            dist/build-info.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
