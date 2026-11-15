@@ -308,5 +308,27 @@
       "imp": "0x102a3ea30"
     }
   ],
-  "runtime_0_5_verified": false
+  "runtime_0_5_verified": false,
+  "user_reported_runtime_0_5": {
+    "user_confirmed_retention": true,
+    "snapshots_saved": 27,
+    "history_records_restored": 10,
+    "snapshot_encode_failures": 0,
+    "snapshot_decode_failures": 0,
+    "runtime_model_schemas": 11,
+    "optional_fields_omitted": 0,
+    "badges_created": 0,
+    "avatar_record_calls": 13,
+    "avatar_layout_calls": 8,
+    "aio_cell_calls": 0,
+    "delegate_height_calls": 0
+  },
+  "flash_inspection_run": 43775209334,
+  "flash_hook": {
+    "class": "PhotoBrowserFlashPictureService",
+    "class_method": true,
+    "selector": "decryptImageWithImagePath:",
+    "types": "@24@0:8@16",
+    "imp": "0x109e934fc"
+  }
 }

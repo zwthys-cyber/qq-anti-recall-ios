@@ -2,11 +2,13 @@
 #import "QARAdapter.h"
 #import "QARStore.h"
 #import "QARBadge.h"
+#import "QARFlash.h"
 
 static NSDictionary *controlStatus(void) {
     NSMutableDictionary *status = [QARStatus() mutableCopy];
     NSDictionary *badge = QARBadgeStatus();
     status[@"recall_badge"] = badge;
+    status[@"flash_retention"] = QARFlashStatus();
     status[@"installed_hooks"] = @([status[@"installed_hooks"] unsignedIntegerValue] + [badge[@"installed_hooks"] unsignedIntegerValue]);
     NSMutableDictionary *hooks = [status[@"hook_results"] mutableCopy];
     [hooks addEntriesFromDictionary:badge[@"hook_results"]];
@@ -85,7 +87,7 @@ static NSDictionary *controlStatus(void) {
     if (!presenter || [presenter isKindOfClass:UIAlertController.class]) return;
     NSDictionary *status = controlStatus();
     NSString *message = [NSString stringWithFormat:
-        @"插件 %@\nQQ %@\n已加载接口：%@\n本次保存：%@ · 历史恢复：%@\n\n已保留的撤回消息下方显示精美标识。\n开启后会在本机保存消息副本，按账号隔离，最多 512 条 / 16 MB；不上传，诊断不含消息内容。旧版没有保存的消息无法补回。",
+        @"插件 %@\nQQ %@\n已加载接口：%@\n本次保存：%@ · 历史恢复：%@\n\n已保留的撤回消息下方显示精美标识。打开闪照后保存本机图片副本，可在本面板重复查看，最多 100 张 / 128 MB。\n开启后会在本机保存消息副本，按账号隔离，最多 512 条 / 16 MB；不上传，诊断不含消息内容。旧版没有保存的消息无法补回。",
         status[@"plugin_version"], status[@"build_version"], status[@"installed_hooks"],
         status[@"message_store"][@"snapshots_saved"], status[@"message_store"][@"history_records_restored"]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"QQ 防撤回 · 实验版"
@@ -96,6 +98,12 @@ static NSDictionary *controlStatus(void) {
                 QARSetEnabled(!QAREnabled());
             }]];
     }
+    [alert addAction:[UIAlertAction actionWithTitle:@"查看保留的闪照" style:UIAlertActionStyleDefault
+        handler:^(__unused UIAlertAction *action) {
+            dispatch_async(dispatch_get_main_queue(), ^{ QARPresentFlash([self presenter]); });
+        }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"清除当前账号的闪照" style:UIAlertActionStyleDestructive
+        handler:^(__unused UIAlertAction *action) { QARClearFlash(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清零并开始测试" style:UIAlertActionStyleDefault
         handler:^(__unused UIAlertAction *action) { QARResetDiagnostics(); QARResetBadgeCounters(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清除当前账号的消息备份" style:UIAlertActionStyleDestructive
@@ -131,6 +139,7 @@ __attribute__((constructor)) static void QARStart(void) {
         dispatch_async(dispatch_get_main_queue(), ^{
             QARInstallAdapters(NSBundle.mainBundle.infoDictionary);
             QARInstallBadge(NSBundle.mainBundle.infoDictionary);
+            QARInstallFlash(NSBundle.mainBundle.infoDictionary);
             control = [QARControl new];
             [NSNotificationCenter.defaultCenter addObserver:control selector:@selector(applicationActive:)
                 name:UIApplicationDidBecomeActiveNotification object:nil];
@@ -138,6 +147,7 @@ __attribute__((constructor)) static void QARStart(void) {
                 dispatch_get_main_queue(), ^{
                     QARInstallAdapters(NSBundle.mainBundle.infoDictionary);
             QARInstallBadge(NSBundle.mainBundle.infoDictionary);
+            QARInstallFlash(NSBundle.mainBundle.infoDictionary);
                     [control attach];
                 });
         });

@@ -45,12 +45,12 @@ sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path", capture_output
 arch = platform.machine()
 sources = [
     "QARHook", "QARAdapter", "QARTrace", "QARIncoming", "QARUpdateFilter",
-    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge",
+    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge", "QARFlash",
 ]
 run("xcrun", "clang", "-target", f"{arch}-apple-ios15.0-simulator", "-isysroot", sdk,
     "-fobjc-arc", "-DQAR_TESTING", "-Wall", "-Wextra", "-Werror", "-I", "Sources", "-I", "Tests",
     *(f"Sources/{name}.m" for name in sources), "Tests/ModelFixtures.m", "Tests/BadgeUITests.m",
-    "-framework", "Foundation", "-framework", "UIKit", "-framework", "CoreGraphics",
+    "-framework", "Foundation", "-framework", "UIKit", "-framework", "CoreGraphics", "-framework", "QuickLook",
     "-o", str(app / "QARBadgeFixture"))
 run("codesign", "--force", "--sign", "-", str(app))
 devices = json.loads(run("xcrun", "simctl", "list", "devices", "available", "-j", capture_output=True).stdout)

@@ -1,6 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "QARBadge.h"
+#import "QARFlash.h"
+#import <objc/message.h>
 #import "QARSnapshot.h"
 #import "QARStore.h"
 #import "QARAdapter.h"
@@ -83,7 +85,7 @@ static void check(BOOL condition, const char *why) {
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section { (void)table; (void)section; return self.models.count; }
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     FixtureCell *cell = [table dequeueReusableCellWithIdentifier:@"fixture"];
-    if (!cell) cell = [[NSClassFromString(@"_TtC6AIOLib7AIOCell") alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"fixture"];
+    if (!cell) cell = [[FixtureCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"fixture"];
     [cell bindViewModel:self.models[path.row]]; return cell;
 }
 - (CGFloat)tableView:(UITableView *)table heightForRowAtIndexPath:(NSIndexPath *)path {
@@ -99,6 +101,45 @@ static FixtureModel *model(id record) {
 }
 static void after(dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), block);
+}
+static id flashResult;
+static id flashDecode(id receiver, SEL cmd, id path) { (void)receiver; (void)cmd; (void)path; return flashResult; }
+static void testFlash(void) {
+    Class service = objc_allocateClassPair(NSObject.class, "PhotoBrowserFlashPictureService", 0);
+    class_addMethod(object_getClass(service), NSSelectorFromString(@"decryptImageWithImagePath:"), (IMP)flashDecode, "@24@0:8@16");
+    objc_registerClassPair(service);
+    QARInstallFlash(QARFixtureInfo());
+    QARFlashUseTestDirectory([NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"flash-fixture"]]);
+    QARClearFlash();
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(16, 16)];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [UIColor.systemTealColor setFill]; CGContextFillRect(context.CGContext, CGRectMake(0, 0, 16, 16));
+    }];
+    NSString *source = [NSTemporaryDirectory() stringByAppendingPathComponent:@"synthetic-flash.png"];
+    check([UIImagePNGRepresentation(image) writeToFile:source atomically:YES], "create synthetic flash source");
+    flashResult = source;
+    SEL selector = NSSelectorFromString(@"decryptImageWithImagePath:");
+    id returned = ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
+    check(returned == flashResult && QARFlashFiles().count == 1, "flash hook preserves original result and copies the decrypted image");
+    [NSFileManager.defaultManager removeItemAtPath:source error:nil];
+    NSURL *savedURL = QARFlashFiles().firstObject;
+    check([UIImage imageWithContentsOfFile:savedURL.path] && [UIImage imageWithContentsOfFile:savedURL.path],
+        "flash copy remains repeatedly viewable after original deletion");
+    flashResult = image;
+    ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
+    check(QARFlashFiles().count == 1, "duplicate decrypted image is not duplicated");
+    QARClearFlash(); QARSetEnabled(NO);
+    ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
+    check(QARFlashFiles().count == 0, "disabled mode saves no flash images");
+    QARSetEnabled(YES);
+    ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
+    QARFixtureAccount(20002);
+    check(QARFlashFiles().count == 0, "flash gallery is account isolated");
+    QARFixtureAccount(10001);
+    check(QARFlashFiles().count == 1, "original account retains its flash copy");
+    QARClearFlash(); check(QARFlashFiles().count == 0, "explicit clear removes retained flash images");
+    flashResult = nil;
+    report(@"STEP: flash copy, repeated viewing after deletion, pass-through, deduplication, disable, account isolation and clear passed");
 }
 @interface FixtureScene : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic,strong) UIWindow *window;
@@ -126,11 +167,12 @@ static void after(dispatch_block_t block) {
     check([scene isKindOfClass:UIWindowScene.class], "UIKit window scene");
     report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
+    testFlash();
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
     registerFixture(FixtureModel.class, "AIOBaseCellViewModel");
     QARInstallBadge(QARFixtureInfo());
-    check([QARBadgeStatus()[@"installed_hooks"] unsignedIntegerValue] == 6, "static avatar and cell hooks installed before discovering the actual delegate");
+    check([QARBadgeStatus()[@"installed_hooks"] unsignedIntegerValue] == 8, "static avatar and cell hooks installed before discovering the actual delegate");
     QARStoreUseTestDirectory([NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"badge-fixtures"]]);
     QARClearSavedMessages();
     id original = QARFixtureMessage(1, 1, @"fixture", 0, @"这条消息已为你保留。");

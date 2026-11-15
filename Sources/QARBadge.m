@@ -89,9 +89,12 @@ static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
 static BOOL versionReady;
 static _Thread_local unsigned heightDepth;
+static atomic_uint_fast64_t noTable, detachedTable;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges, recordsFound, missingPath;
 static atomic_uint_fast64_t heightCalls, reservedRows, missingHeightMethod, delegateABIRejects, autoHeights;
-static atomic_uint_fast64_t staticCalls[6];
+static atomic_uint_fast64_t staticCalls[8];
+static void avatarWindow(id self, SEL cmd);
+static void avatarSuperview(id self, SEL cmd);
 static void avatarLayout(id self, SEL cmd);
 static void avatarRecord(id self, SEL cmd, id record);
 static BOOL bindCell(id self, SEL cmd, id model);
@@ -105,7 +108,9 @@ static BadgeEntry hooks[] = {
     {"_TtC6AIOLib7AIOCell", "prepareForReuse", "v16@0:8", (IMP)reuseCell, NULL, QARHookMissingClass},
     {"_TtC6AIOLib7AIOCell", "unbindViewModel", "v16@0:8", (IMP)unbindCell, NULL, QARHookMissingClass},
     {"_TtC6AIOLib7AIOCell", "layoutSubviews", "v16@0:8", (IMP)layoutCell, NULL, QARHookMissingClass},
-    {"QQNTAIOMessageAvatarView", "setRecord:", "v24@0:8@16", (IMP)avatarRecord, NULL, QARHookMissingClass}
+    {"QQNTAIOMessageAvatarView", "setRecord:", "v24@0:8@16", (IMP)avatarRecord, NULL, QARHookMissingClass},
+    {"QQNTAIOMessageAvatarView", "didMoveToWindow", "v@:", (IMP)avatarWindow, NULL, QARHookMissingClass},
+    {"QQNTAIOMessageAvatarView", "didMoveToSuperview", "v@:", (IMP)avatarSuperview, NULL, QARHookMissingClass}
 };
 static UITableViewCell *parentCell(UIView *view) {
     for (UIView *p = view; p; p = p.superview)
@@ -241,6 +246,8 @@ static void refresh(UITableViewCell *cell) {
     state.marked = record && QARIsMarkedRecord(record);
     if (record) atomic_fetch_add(&recordsFound, 1);
     UITableView *table = parentTable(cell);
+    if (record && !table) atomic_fetch_add(&noTable, 1);
+    if (record && table && !table.window) atomic_fetch_add(&detachedTable, 1);
     if (table && table.window && record) {
         NSIndexPath *path = [table indexPathForCell:cell]; // Deliberately outside delegateHeight.
         if (path) {
@@ -276,6 +283,24 @@ static void refresh(UITableViewCell *cell) {
     CGFloat x = MIN(56, MAX(16, width - size.width - 16));
     state.pill.frame = CGRectMake(x, cell.contentView.bounds.size.height - extra + 3, size.width, size.height);
     state.pill.hidden = NO; [cell.contentView bringSubviewToFront:state.pill];
+}
+static void attachmentRefresh(id object) {
+    if (!NSThread.isMainThread || ![object isKindOfClass:UIView.class]) return;
+    __weak UIView *view = object;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *strongView = view;
+        if (strongView.window) refresh(parentCell(strongView));
+    });
+}
+static void avatarWindow(id self, SEL cmd) {
+    atomic_fetch_add(&staticCalls[6], 1);
+    ((void (*)(id, SEL))hooks[6].original)(self, cmd);
+    attachmentRefresh(self);
+}
+static void avatarSuperview(id self, SEL cmd) {
+    atomic_fetch_add(&staticCalls[7], 1);
+    ((void (*)(id, SEL))hooks[7].original)(self, cmd);
+    attachmentRefresh(self);
 }
 static void avatarLayout(id self, SEL cmd) {
     atomic_fetch_add(&staticCalls[0], 1);
@@ -314,7 +339,7 @@ static void layoutCell(id self, SEL cmd) {
 void QARInstallBadge(NSDictionary *info) {
     if (!QARVersionSupported(info)) return;
     versionReady = YES;
-    for (unsigned i = 0; i < 6; i++) {
+    for (unsigned i = 0; i < 8; i++) {
         BadgeEntry *entry = &hooks[i]; if (entry->original) continue;
         entry->result = QARInstallHook(objc_getClass(entry->cls), sel_registerName(entry->selector),
             entry->types, entry->replacement, &entry->original);
@@ -338,7 +363,7 @@ void QARInstallBadge(NSDictionary *info) {
 NSDictionary *QARBadgeStatus(void) {
     NSMutableDictionary *results = [NSMutableDictionary new], *active = [NSMutableDictionary new], *calls = [NSMutableDictionary new];
     NSUInteger installed = 0;
-    for (unsigned i = 0; i < 6; i++) {
+    for (unsigned i = 0; i < 8; i++) {
         BadgeEntry *entry = &hooks[i];
         NSString *key = [NSString stringWithFormat:@"%s -%s", entry->cls, entry->selector];
         results[key] = @(entry->result); calls[key] = @(atomic_load(&staticCalls[i]));
@@ -356,7 +381,8 @@ NSDictionary *QARBadgeStatus(void) {
     return @{@"installed_hooks": @(installed), @"hook_results": results, @"hook_still_active": active, @"hook_calls": calls,
         @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)),
         @"delegate_height_calls": @(atomic_load(&heightCalls)), @"rows_with_footer_reserved": @(atomic_load(&reservedRows)),
-        @"records_found": @(atomic_load(&recordsFound)), @"row_path_unavailable": @(atomic_load(&missingPath)),
+        @"records_found": @(atomic_load(&recordsFound)), @"table_not_attached": @(atomic_load(&noTable)),
+        @"table_without_window": @(atomic_load(&detachedTable)), @"row_path_unavailable": @(atomic_load(&missingPath)),
         @"delegate_method_missing": @(atomic_load(&missingHeightMethod)), @"delegate_abi_rejected": @(atomic_load(&delegateABIRejects)),
         @"automatic_height_rows": @(atomic_load(&autoHeights)), @"footer_space_unavailable": @(atomic_load(&unresolved)),
         @"text": @"已撤回 · 已保留"};
@@ -366,7 +392,7 @@ void QARResetBadgeCounters(void) {
     atomic_store(&heightCalls, 0); atomic_store(&reservedRows, 0); atomic_store(&recordsFound, 0);
     atomic_store(&missingPath, 0); atomic_store(&missingHeightMethod, 0); atomic_store(&delegateABIRejects, 0);
     atomic_store(&autoHeights, 0);
-    for (unsigned i = 0; i < 6; i++) atomic_store(&staticCalls[i], 0);
+    for (unsigned i = 0; i < 8; i++) atomic_store(&staticCalls[i], 0);
     for (QARDelegateHook *entry in delegateHooks) entry.calls = 0;
 }
 #ifdef QAR_TESTING
