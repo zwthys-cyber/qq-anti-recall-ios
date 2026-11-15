@@ -6,9 +6,12 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: qq-plugin-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-test:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
