@@ -91,7 +91,10 @@ static id richMessage(long long ident) {
     supplement.caption = @"Synthetic supplemental payload"; supplement.identifier = ULLONG_MAX;
     QARModelWrite(record, @"emojiLikesList", @[supplement]);
     NSMutableDictionary *metadata = [NSMutableDictionary new];
-    metadata[@"private-fixture-key"] = metadata;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wobjc-circular-container"
+    metadata[@"private-fixture-key"] = metadata; // Intentional malformed incidental graph fixture.
+#pragma clang diagnostic pop
     QARModelWrite(record, @"msgAttrs", metadata);
     QARModelWrite(record, @"sendStatusExtInfo", [NSObject new]);
     return record;
