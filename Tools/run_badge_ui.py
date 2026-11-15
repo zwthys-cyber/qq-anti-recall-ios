@@ -54,17 +54,19 @@ run("xcrun", "clang", "-target", f"{arch}-apple-ios15.0-simulator", "-isysroot",
     "-o", str(app / "QARBadgeFixture"))
 run("codesign", "--force", "--sign", "-", str(app))
 devices = json.loads(run("xcrun", "simctl", "list", "devices", "available", "-j", capture_output=True).stdout)
+preferred_runtime = os.environ.get("QAR_SIMULATOR_RUNTIME", "")
 phones = [device for runtime, items in devices["devices"].items() if ".iOS-" in runtime
+          and (not preferred_runtime or runtime.endswith(preferred_runtime))
           for device in items if device.get("isAvailable") and device["name"].startswith("iPhone")]
 if not phones:
     raise RuntimeError("This runner has no available iPhone simulator")
 device = next((p for p in phones if p["state"] == "Booted"),
-              next((p for p in phones if p["name"] == "iPhone 17e"), phones[0]))
+              next((p for p in phones if p["name"] in ("iPhone 16", "iPhone 17e")), phones[0]))
 udid = device["udid"]
 if device["state"] != "Booted":
     run("xcrun", "simctl", "boot", udid)
 run("xcrun", "simctl", "bootstatus", udid, "-b", timeout=480)
-run("xcrun", "simctl", "install", udid, str(app))
+run("xcrun", "simctl", "install", udid, str(app), timeout=300)
 container = pathlib.Path(run("xcrun", "simctl", "get_app_container", udid, bundle, "data", capture_output=True).stdout.strip())
 run("xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle, timeout=180)
 result_file = container / "Documents" / "fixture-result.txt"
@@ -94,6 +96,8 @@ for name in ("badge-light.png", "badge-dark.png"):
 (destination / "badge-ui-tests.json").write_text(json.dumps({
     "passed": True, "environment": "synthetic UIKit simulator fixture",
     "real_qq_runtime_verified": False,
+    "simulator_runtime_filter": preferred_runtime, "simulator_device": device["name"],
+    "xcode": run("xcodebuild", "-version", capture_output=True).stdout.strip(),
     "checks": ["footer_geometry", "normal_row", "reuse", "history_disk_restore",
                "dark_mode_render", "disabled", "account_switch"],
 }, indent=2) + "\n")

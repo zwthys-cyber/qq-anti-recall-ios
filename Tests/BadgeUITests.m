@@ -33,7 +33,7 @@ static void check(BOOL condition, const char *why) {
 @property(nonatomic,strong) FixtureAvatar *avatar;
 @property(nonatomic,strong) UILabel *body;
 @property(nonatomic,strong) FixtureModel *model;
-- (BOOL)bindViewModel:(FixtureModel *)model;
+- (_Bool)bindViewModel:(FixtureModel *)model;
 - (void)unbindViewModel;
 @end
 @implementation FixtureCell
