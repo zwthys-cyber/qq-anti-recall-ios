@@ -27,7 +27,7 @@ jobs:
       - name: Build iOS arm64 injection library
         run: |
           mkdir -p dist
-          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARControl.m -framework Foundation -framework UIKit -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
+          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARControl.m -framework Foundation -framework UIKit -framework CoreGraphics -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
           codesign --force --sign - dist/QQAntiRecall.dylib
       - name: Verify library architecture, platform and signature
         run: python3 Tools/verify_build.py dist/QQAntiRecall.dylib

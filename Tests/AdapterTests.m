@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import "QARAdapter.h"
 #include <limits.h>
 #include <stdio.h>
@@ -47,6 +48,8 @@ int main(void) {
         QARInstallAdapters(wrong);
         check([QARStatus()[@"installed_hooks"] integerValue] == 0, "unsupported target does not hook");
 #ifdef QAR_HAS_UI_RECALL
+        QARInstallAdapters(supported);
+        check([QARStatus()[@"installed_hooks"] integerValue] == 0, "missing required UI receiver leaves all hooks uninstalled");
         Class uiClass = objc_allocateClassPair(NSObject.class, QAR_UI_RECALL_CLASS, 0);
         check(uiClass != Nil, "create synthetic UI receiver");
         class_addMethod(uiClass, NSSelectorFromString(@"onRecvRecallMsg:"), (IMP)uiOriginalFixture, "v@:@");
