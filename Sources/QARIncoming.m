@@ -3,6 +3,7 @@
 #import "QARHook.h"
 #import "QARTrace.h"
 #import "QARUpdateFilter.h"
+#import "QARStore.h"
 #include <stdatomic.h>
 
 #define SWI "_TtC13GuildNTKernel20SWIKernelMsgListener"
@@ -52,10 +53,13 @@ static void swiRecall(id self, SEL cmd, int type, id peer, unsigned long long se
 }
 static void swiReceive(id self, SEL cmd, id messages) {
     observe(SWIReceive);
+    QARRememberMessages(messages);
     ((void (*)(id, SEL, id))entries[SWIReceive].original)(self, cmd, messages);
 }
 static void swiUpdate(id self, SEL cmd, id messages) {
     observe(SWIUpdate);
+    QARRememberMessages(messages);
+    QARMarkRecalledUpdates(messages);
     BOOL shouldForward = YES;
     id filtered = QARFilterMessageUpdates(messages, &shouldForward);
     if (!shouldForward) {
@@ -66,6 +70,7 @@ static void swiUpdate(id self, SEL cmd, id messages) {
 }
 static void swiDelete(id self, SEL cmd, id contact, id ids) {
     observe(SWIDelete);
+    QARForgetMessageIDs(ids);
     ((void (*)(id, SEL, id, id))entries[SWIDelete].original)(self, cmd, contact, ids);
 }
 static BOOL netParse(id self, SEL cmd, const void *bytes, int length, int subcommand, void *model) {

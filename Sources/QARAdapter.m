@@ -3,6 +3,8 @@
 #import "QARTrace.h"
 #import "QARIncoming.h"
 #import "QARUpdateFilter.h"
+#import "QARStore.h"
+#import "QARHistory.h"
 #include <stdatomic.h>
 #include <stdbool.h>
 
@@ -23,6 +25,9 @@ BOOL QAREnabled(void) { return atomic_load(&enabled); }
 void QARSetEnabled(BOOL value) {
     atomic_store(&enabled, value);
     [NSUserDefaults.standardUserDefaults setBool:value forKey:preference];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:QARStoreChangedNotification object:nil];
+    });
 }
 static void onKernelRecall(id self, SEL cmd, int chatType, id peerUid, unsigned long long seq) {
     if (QAREnabled()) {
@@ -74,6 +79,7 @@ void QARInstallAdapters(NSDictionary *info) {
         atomic_store(&enabled, [NSUserDefaults.standardUserDefaults boolForKey:preference]);
     }
     QARInstallIncoming(info);
+    QARInstallHistory(info);
     if (ntOriginal && uiOriginal && flagOriginal) return;
     BOOL ready = preflight(@"KTIKernelMsgListener", @"onMsgRecall:peerUid:seq:", "v36@0:8i16@20Q28");
     ready &= preflight(@QAR_UI_RECALL_CLASS, @"onRecvRecallMsg:", "v24@0:8@16");
@@ -97,15 +103,19 @@ void QARResetDiagnostics(void) {
     atomic_store(&preventedFlags, 0);
     QARResetIncoming();
     QARResetUpdateFilter();
+    QARResetStoreCounters();
+    QARResetHistoryCounters();
     QARResetTrace();
 }
 NSDictionary *QARStatus(void) {
     NSDictionary *incoming = QARIncomingStatus();
+    NSDictionary *history = QARHistoryStatus();
     NSMutableDictionary *allResults = [results mutableCopy] ?: [NSMutableDictionary new];
     [allResults addEntriesFromDictionary:incoming[@"hook_results"]];
-    NSUInteger installed = (ntOriginal != NULL) + (uiOriginal != NULL) + (flagOriginal != NULL) + [incoming[@"installed_hooks"] unsignedIntegerValue];
+    [allResults addEntriesFromDictionary:history[@"hook_results"]];
+    NSUInteger installed = (ntOriginal != NULL) + (uiOriginal != NULL) + (flagOriginal != NULL) + [incoming[@"installed_hooks"] unsignedIntegerValue] + [history[@"installed_hooks"] unsignedIntegerValue];
     return @{
-        @"plugin_version": @"0.3.0-experimental",
+        @"plugin_version": @"0.4.0-experimental",
         @"short_version": hostInfo[@"CFBundleShortVersionString"] ?: @"",
         @"build_version": hostInfo[@"CFBundleVersion"] ?: @"",
         @"supported_version": @(QARVersionSupported(hostInfo ?: @{})),
@@ -114,6 +124,9 @@ NSDictionary *QARStatus(void) {
         @"hook_results": [allResults copy],
         @"incoming_hook_calls": incoming[@"hook_calls"],
         @"update_filter": QARUpdateFilterStatus(),
+        @"message_store": QARStoreStatus(),
+        @"history_hook_calls": history[@"hook_calls"],
+        @"history_hook_still_active": history[@"hook_still_active"],
         @"incoming_suppressed_calls": incoming[@"suppressed_calls"],
         @"incoming_hook_still_active": incoming[@"hook_still_active"],
         @"intercepted_events": @(atomic_load(&ntEvents) + atomic_load(&uiEvents) + [incoming[@"intercepted_events"] unsignedLongLongValue]),
@@ -123,6 +136,6 @@ NSDictionary *QARStatus(void) {
         @"positive_recall_time_writes": @(atomic_load(&preventedFlags)),
         @"trace_samples": QARTraceSnapshot(),
         @"runtime_qq_verified": @NO,
-        @"records_message_contents": @NO
+        @"records_message_contents": @YES
     };
 }

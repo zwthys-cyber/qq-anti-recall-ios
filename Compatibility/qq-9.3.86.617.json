@@ -129,5 +129,150 @@
     ],
     "interpretation": "The original update callback was forwarded before the suppressed recall notification."
   },
-  "version_0_3_change": "Filter verified OCMsgRecord objects with recallTime > 0 before forwarding SWI list updates; mixed ordinary updates remain in order. No native database patch or persistent content cache."
+  "version_0_3_change": "Filter verified OCMsgRecord objects with recallTime > 0 before forwarding SWI list updates; mixed ordinary updates remain in order. No native database patch or persistent content cache.",
+  "history_inspection_run": 43763487317,
+  "badge_inspection_run": 43765017161,
+  "account_readers": [
+    {
+      "class": "QQAccountsManager",
+      "class_method": false,
+      "selector": "currentUin",
+      "types": "Q16@0:8",
+      "imp": "0x100258d50"
+    },
+    {
+      "class": "QQAccountsManager",
+      "class_method": true,
+      "selector": "GetInstance",
+      "types": "@16@0:8",
+      "imp": "0x100222824"
+    }
+  ],
+  "history_hooks": [
+    {
+      "class": "_TtC13GuildNTKernel35SWIGetAioFirstViewLatestMsgCallback",
+      "class_method": false,
+      "selector": "onResult:errMsg:msgList:needContinueGetMsg:",
+      "types": "v40@0:8i16@20@28B36",
+      "imp": "0x106f8f44c"
+    },
+    {
+      "class": "_TtC13GuildNTKernel40SWIGetGuildAioFirstViewLatestMsgCallback",
+      "class_method": false,
+      "selector": "onResult:errMsg:msgList:needContinueGetMsg:",
+      "types": "v40@0:8i16@20@28B36",
+      "imp": "0x106f9ecec"
+    },
+    {
+      "class": "_TtC13GuildNTKernel21SWIMsgOperateCallback",
+      "class_method": false,
+      "selector": "onResult:errMsg:msgList:",
+      "types": "v36@0:8i16@20@28",
+      "imp": "0x106fe1a60"
+    },
+    {
+      "class": "_TtC13GuildNTKernel27SWIGetMsgWithStatusCallback",
+      "class_method": false,
+      "selector": "onResult:errMsg:status:msgList:",
+      "types": "v44@0:8i16@20q28@36",
+      "imp": "0x106fa3458"
+    },
+    {
+      "class": "_TtC13GuildNTKernel25SWIKernelMsgQueryListener",
+      "class_method": false,
+      "selector": "onMsgQueryResult:result:errMsg:msgList:",
+      "types": "v40@0:8I16i20@24@32",
+      "imp": "0x106fd080c"
+    },
+    {
+      "class": "_TtC13GuildNTKernel22SWIGetMultiMsgCallback",
+      "class_method": false,
+      "selector": "onResult:errMsg:msgList:",
+      "types": "v36@0:8i16@20@28",
+      "imp": "0x106fa374c"
+    },
+    {
+      "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
+      "class_method": false,
+      "selector": "onMsgInfoListAdd:",
+      "types": "v24@0:8@16",
+      "imp": "0x106fcec88"
+    }
+  ],
+  "badge_methods": [
+    {
+      "class": "QQNTAIOMessageAvatarView",
+      "class_method": false,
+      "selector": "record",
+      "types": "@16@0:8",
+      "imp": "0x109ea1918"
+    },
+    {
+      "class": "QQNTAIOMessageAvatarView",
+      "class_method": false,
+      "selector": "setRecord:",
+      "types": "v24@0:8@16",
+      "imp": "0x109ea1924"
+    },
+    {
+      "class": "QQNTAIOMessageAvatarView",
+      "class_method": false,
+      "selector": "layoutSubviews",
+      "types": "v16@0:8",
+      "imp": "0x109ea0c74"
+    },
+    {
+      "class": "_TtC6AIOLib7AIOCell",
+      "class_method": false,
+      "selector": "bindViewModel:",
+      "types": "B24@0:8@16",
+      "imp": "0x102a2b50c"
+    },
+    {
+      "class": "_TtC6AIOLib7AIOCell",
+      "class_method": false,
+      "selector": "unbindViewModel",
+      "types": "v16@0:8",
+      "imp": "0x102a2b5bc"
+    },
+    {
+      "class": "_TtC6AIOLib7AIOCell",
+      "class_method": false,
+      "selector": "prepareForReuse",
+      "types": "v16@0:8",
+      "imp": "0x102a2b76c"
+    },
+    {
+      "class": "_TtC6AIOLib7AIOCell",
+      "class_method": false,
+      "selector": "layoutSubviews",
+      "types": "v16@0:8",
+      "imp": "0x109224d04"
+    },
+    {
+      "class": "AIOBaseCellViewModel",
+      "class_method": false,
+      "selector": "tableView:heightForRowAtIndexPath:",
+      "types": "d32@0:8@16@24",
+      "imp": "0x102a1edf0"
+    }
+  ],
+  "model_schema": {
+    "file": "Sources/QARModelSchema.inc",
+    "classes": 88,
+    "inspection_run": 43763487317,
+    "scope": "Verified backed properties with canonical getters/setters and codec setters. Unknown nested classes reject the entire snapshot."
+  },
+  "user_reported_runtime_0_3": {
+    "plugin_version": "0.3.0-experimental",
+    "single_chat_while_open": "passed per user observation",
+    "leave_and_reenter": "failed: native recalled placeholder reloads",
+    "filtered_recall_update_items": 16,
+    "swi_received": 8,
+    "swi_recall": 8,
+    "swi_delete": 0,
+    "positive_recall_time_writes": 58
+  },
+  "version_0_4_change": "Account-isolated bounded local snapshots, restore matching recalled records in verified history callbacks, and a UIKit footer badge keyed to the saved recall marker. No native database writes; exact version and ABI gates.",
+  "runtime_0_4_verified": false
 }
