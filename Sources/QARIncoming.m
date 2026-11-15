@@ -2,6 +2,7 @@
 #import "QARAdapter.h"
 #import "QARHook.h"
 #import "QARTrace.h"
+#import "QARUpdateFilter.h"
 #include <stdatomic.h>
 
 #define SWI "_TtC13GuildNTKernel20SWIKernelMsgListener"
@@ -55,7 +56,13 @@ static void swiReceive(id self, SEL cmd, id messages) {
 }
 static void swiUpdate(id self, SEL cmd, id messages) {
     observe(SWIUpdate);
-    ((void (*)(id, SEL, id))entries[SWIUpdate].original)(self, cmd, messages);
+    BOOL shouldForward = YES;
+    id filtered = QARFilterMessageUpdates(messages, &shouldForward);
+    if (!shouldForward) {
+        atomic_fetch_add(&blocked[SWIUpdate], 1);
+        return;
+    }
+    ((void (*)(id, SEL, id))entries[SWIUpdate].original)(self, cmd, filtered);
 }
 static void swiDelete(id self, SEL cmd, id contact, id ids) {
     observe(SWIDelete);

@@ -2,6 +2,7 @@
 #import "QARHook.h"
 #import "QARTrace.h"
 #import "QARIncoming.h"
+#import "QARUpdateFilter.h"
 #include <stdatomic.h>
 #include <stdbool.h>
 
@@ -95,6 +96,7 @@ void QARResetDiagnostics(void) {
     atomic_store(&uiEvents, 0);
     atomic_store(&preventedFlags, 0);
     QARResetIncoming();
+    QARResetUpdateFilter();
     QARResetTrace();
 }
 NSDictionary *QARStatus(void) {
@@ -103,7 +105,7 @@ NSDictionary *QARStatus(void) {
     [allResults addEntriesFromDictionary:incoming[@"hook_results"]];
     NSUInteger installed = (ntOriginal != NULL) + (uiOriginal != NULL) + (flagOriginal != NULL) + [incoming[@"installed_hooks"] unsignedIntegerValue];
     return @{
-        @"plugin_version": @"0.2.0-experimental",
+        @"plugin_version": @"0.3.0-experimental",
         @"short_version": hostInfo[@"CFBundleShortVersionString"] ?: @"",
         @"build_version": hostInfo[@"CFBundleVersion"] ?: @"",
         @"supported_version": @(QARVersionSupported(hostInfo ?: @{})),
@@ -111,6 +113,7 @@ NSDictionary *QARStatus(void) {
         @"installed_hooks": @(installed),
         @"hook_results": [allResults copy],
         @"incoming_hook_calls": incoming[@"hook_calls"],
+        @"update_filter": QARUpdateFilterStatus(),
         @"incoming_suppressed_calls": incoming[@"suppressed_calls"],
         @"incoming_hook_still_active": incoming[@"hook_still_active"],
         @"intercepted_events": @(atomic_load(&ntEvents) + atomic_load(&uiEvents) + [incoming[@"intercepted_events"] unsignedLongLongValue]),

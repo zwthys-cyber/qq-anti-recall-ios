@@ -1,48 +1,54 @@
 # QQ Anti Recall iOS
 
-针对 **QQ 9.3.86 / 构建 9.3.86.617** 的 iOS 注入动态库，目标设备为 iPhone 17 Pro Max / iOS 27.0.1。当前版本 **0.2.0-experimental**。
+针对 **QQ 9.3.86 / 构建 9.3.86.617** 的 iOS 注入动态库。当前版本 **0.3.0-experimental**，目标设备为 iPhone 17 Pro Max / iOS 27.0.1。
 
-**0.1.0 已由用户实测确认：插件加载、3 个 Hook 安装成功，但单聊撤回后消息仍直接消失。0.2.0 新增入口与诊断，消息保留效果仍待真机复测，不能把编译成功或回调次数视为防撤回成功。**
+## 0.3.0 修正
 
-## 安装与复测
+用户的 0.2.0 真机日志显示：收到消息后，QQ 先写入正数 recallTime 并调用 SWI 的 onMsgInfoListUpdate:，约 1 ms 后才调用 onMsgRecall:peerUid:seq:。0.2.0 原样放行了前面的更新，所以即使拦截了后面 5 次撤回通知，消息仍会消失。
 
-1. 从本仓库 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions) 成功的 **Build and test** 运行中下载 `QQAntiRecall-9.3.86.617-arm64-experimental`。
-2. 用本次 `QQAntiRecall.dylib` **替换旧版插件**，注入对应 QQ 解密 IPA，再用自己的签名重新安装。不要同时注入两份插件；注入工具必须写入动态库加载项。
-3. 打开蓝色「防撤回」面板，核对插件版本 **0.2.0-experimental**。全部接口匹配时共 **11 个 Hook**，其中包括只观察并透传的接口，因此数量不等于拦截成功。
-4. 确认已开启，点击「清零并开始测试」。让另一账号发送一条新的单聊文本，确认本机收到后再撤回。记录原消息是否仍显示、退出聊天再进入后是否仍显示，然后导出诊断。
-5. 后续分别检查群聊、图片、后台/离线和重启后的情况；关闭插件时应恢复正常撤回行为。
+0.3.0 在调用 QQ 原始列表更新方法之前逐条检查记录：只过滤类型及 getter ABI 均已核对的 OCMsgRecord，且要求 recallTime > 0。整批都是撤回项时不调用原更新方法；混合批次只移除撤回项，保留普通项的顺序和对象身份。真实空列表、未知载荷、未知记录类型、类型不匹配或读取失败均保留原行为。关闭插件时原参数直接透传。
 
-ad-hoc 构建签名不能直接安装到未越狱手机，需要连同宿主 QQ 重新签名。插件不依赖越狱框架。
+不重写撤回时间，不拦截普通用户删除，不读取正文，也不修改输入记录。原有撤回通知拦截继续保留，防止更新之后的通知再次删除可见消息。
 
-## 0.2.0 改动
+**本次针对已抓到的“先更新、后通知”路径修正。自动回归测试不等于目标手机验证；真实 QQ 的修正效果仍需安装新版确认。**
 
-- 新增 Swift `SWIKernelMsgListener` 的撤回回调，以及 `QQMessageRecallNetEngine` / `QQMessageRecallPackageHandler` 的单聊撤回解析入口；开启时阻断这些特定入口，关闭时按原 ABI 透传。
-- 保留原 KTI 与 FloatEar 撤回回调；撤回时间和 Codec 写入改为观察后原样透传，不再把时间清零冒充消息保留。
-- Swift 普通收消息、列表更新及通用删除只计数并透传；没有按名称批量拦截所有删除方法。
-- 新增清零、分入口调用/阻断次数、Hook 是否被后来替换的检查，以及有上限的 QQ 调用位置记录。
+## 下载和安装
 
-每个入口要求匹配真实 IPA 的方法编码；不匹配的入口不安装，并在诊断中记录原因。仅支持上述准确版本/构建和 QQ 可执行文件。原 3 个接口共用预检，新入口独立检查与重试。
+1. 打开 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions)，选择包含本次源码且成功的 Build and test。
+2. 下载 **QQAntiRecall-0.3.0-9.3.86.617-arm64**。解压后核对 build-info.json 的 plugin_version 为 0.3.0-experimental。
+3. 用新的 QQAntiRecall.dylib 替换旧插件，注入对应 QQ 解密 IPA，然后用自己的有效签名重签名安装。不要叠加注入旧版。注入工具须写入动态库加载项。
+4. 面板确认插件版本 0.3.0-experimental，并开启防撤回。全部原有接口匹配时仍为 11 个 Hook；这次修改已有更新 Hook 的行为，不靠增加 Hook 数量实现修正。
 
-## 如何读诊断
+构建产物的 ad-hoc 签名不能直接用于未越狱手机安装，重签名工具需要连同 QQ 重新签名。插件不依赖越狱框架。
 
-`hook_results` 的 **0 表示安装成功，不是调用次数**。1/2/3/4 分别表示缺类、缺方法、ABI 不匹配和参数无效。实际命中看 `incoming_hook_calls`，被阻断的特定撤回入口看 `incoming_suppressed_calls`。`incoming_hook_still_active` 检查 Objective-C 方法表中的替换是否仍存在，不能证明 Swift/C++ 所有调用都会经过方法表。
+## 验证
 
-`positive_recall_time_writes` 仅表示观察到正数时间写入；`prevented_recall_flag_writes` 在 0.2.0 恒为 0。`intercepted_events` 是被阻断的回调总数，同一消息可能对应多个回调。`runtime_qq_verified: false` 保留消息保留效果尚未验证的状态。
+所有编译和自动测试都由 GitHub Actions 完成。新增回归用例先复现 0.2.0：消息已显示 → 原样执行带撤回标记的更新 → 拦截后续通知，结果消息仍丢失；再通过真实的插件 Hook 执行同样顺序，验证显示层原对象及内容保留。
 
-`trace_samples` 最多 24 条，每类事件最多 2 条，每条最多 12 个 QQ 镜像内偏移；点击清零会删除旧样本。只包含固定事件名、相对时间和代码位置，不包含消息参数、正文、账号、路径或原始内存地址。
+还覆盖混合批次中的正常编辑、记录顺序和身份、输入不被修改、普通用户删除、禁用透传、零值/负值/64 位边界、未知类型、子类 ABI 不匹配、getter 异常、并发计数及诊断不含正文。保留已有 Mach-O、Hook、新旧适配器及 iOS 架构/平台/签名验证。
 
-## 验证与限制
+这些测试使用模拟 QQ 类及显示模型，没有在 runner 上登录真正的 QQ。手机验证应使用安装后的新消息：另一账号发送 → 本机收到 → 另一账号撤回，观察气泡是否保留；随后分别验证退出聊天再进入、重启、群聊、图片和后台场景。
 
-GitHub Actions 执行 Mach-O 格式/分类扩展合成测试、Objective-C ABI 与继承隔离测试、新旧适配器测试，以及 iOS arm64 编译、架构/平台/签名检查。新测试覆盖类方法 Hook、指针与整数宽度、关闭透传、普通接收/更新/删除透传、并发诊断清零与隐私边界。
+## 诊断
 
-这些测试使用模拟类，没有登录真实 QQ，也不能复现你手机上的消息链路。QQ 内核数据库、离线同步、Swift 直接调用或其他路径仍可能绕过这些入口。没有独立消息备份库，不能恢复安装前已经撤回或本机未收到的消息；跨会话/重启保留尚未验证。
+点击「清零并开始测试」可以隔离一次新测试，然后「导出诊断」。0.3.0 的 update_filter 中：
 
-## 静态证据与数据
+- recall_update_filter_ready：OCMsgRecord 的撤回时间 getter 是否符合预期 ABI。
+- filtered_recall_update_items：实际从列表更新中移除的撤回项数量，可能包含同一消息的重复分发。
+- dropped_recall_only_batches：整批撤回更新被阻断的次数。
+- forwarded_mixed_update_batches：过滤后仍向 QQ 传递普通更新的批次数。
+- unrecognized_update_payloads / unrecognized_update_items / record_abi_rejections / record_read_failures：未识别或未能安全读取时的透传计数。
 
-输入来自用户指定的 [原始导出](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43715591869)。初始 [macOS 检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43718304175) 验证二进制；扩展的 [Linux 元数据检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43721273602) 绑定同一 QQ 主程序完整 SHA-256，并扫描全局撤回选择子及分类扩展。结果共 1224 条筛选后接口，未从分类扩展中找到新增匹配项。
+incoming_suppressed_calls.swi_list_update 只统计整批被阻断的回调；混合批次由 update_filter 记录。hook_results 中 0 是安装成功，实际调用次数在 incoming_hook_calls。11 个 Hook 或 intercepted_events > 0 都不能单独证明消息被保留。
 
-具体入口、类型编码、哈希与 0.1.0 实测失败记录见 [兼容性证据](Compatibility/qq-9.3.86.617.json)。这些是接口存在的证据，不是完整调用链的运行证明。
+trace_samples 最多 24 条，每种固定事件名最多 2 条、每条最多 12 个 QQ 镜像内偏移。诊断不包含消息参数、正文、账号、路径或原始内存地址。
+
+## 范围与数据
+
+本次保护的是已收到消息的更新通知路径，没有修改 QQ 原生数据库，也没有独立消息备份库。无法恢复本机未收到或安装前已撤回的内容；离线同步、退出会话或重启后的持久保留未获验证。runtime_qq_verified 仍为 false，避免将模拟测试当作真机成功。
+
+输入为用户指定的 [原始导出](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43715591869)。[初始二进制检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43718304175) 与 [扩展元数据检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43721273602) 绑定同一 QQ 主程序 SHA-256；方法编码、输入哈希和旧版失败记录见 [兼容性证据](Compatibility/qq-9.3.86.617.json)。
 
 元数据读取器依据 Apple [objc4](https://github.com/apple-oss-distributions/objc4/blob/main/runtime/objc-runtime-new.h) 和 [dyld](https://github.com/apple-oss-distributions/dyld/blob/main/include/mach-o/fixup-chains.h)。[QQNoRecall](https://github.com/Qaz9190/QQNoRecall) 仅作调查线索，实现独立编写。
 
-插件不上传数据、不读取消息正文。IPA、交付密钥及签名证书不进入本仓库或公开产物。所有编译、测试与二进制检查只在 GitHub Actions 执行；当前服务器不运行 Git、项目脚本或构建命令。
+插件不上传数据、不读取或另行保存消息正文。IPA、交付密钥及签名证书不进入此仓库或公开产物。当前服务器不执行 Git、项目脚本、编译或测试命令。

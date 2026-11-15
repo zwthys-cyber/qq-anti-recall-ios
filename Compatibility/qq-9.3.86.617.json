@@ -56,7 +56,7 @@
       "selector": "onMsgInfoListUpdate:",
       "types": "v24@0:8@16",
       "imp": "0x106fcebc8",
-      "mode": "observe_and_forward"
+      "mode": "filter_recalled_records_then_forward_remaining"
     },
     {
       "class": "_TtC13GuildNTKernel20SWIKernelMsgListener",
@@ -105,5 +105,29 @@
     "single_chat_message_retention": "failed: message disappeared",
     "recall_callback_hits": 0,
     "positive_recall_timestamp_writes": 18
-  }
+  },
+  "filter_readers": [
+    {
+      "class": "OCMsgRecord",
+      "class_method": false,
+      "selector": "recallTime",
+      "types": "q16@0:8",
+      "imp": "0x106e64fcc"
+    }
+  ],
+  "user_reported_runtime_0_2": {
+    "plugin_version": "0.2.0-experimental",
+    "message_retention": "failed",
+    "swi_received": 5,
+    "swi_list_update": 13,
+    "swi_recall": 5,
+    "swi_delete": 0,
+    "positive_recall_time_writes": 20,
+    "observed_order": [
+      "positive_recall_time_observed / swi_list_update at 20188 ms",
+      "swi_recall at 20189 ms"
+    ],
+    "interpretation": "The original update callback was forwarded before the suppressed recall notification."
+  },
+  "version_0_3_change": "Filter verified OCMsgRecord objects with recallTime > 0 before forwarding SWI list updates; mixed ordinary updates remain in order. No native database patch or persistent content cache."
 }
