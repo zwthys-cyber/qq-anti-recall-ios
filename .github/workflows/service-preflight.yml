@@ -1,0 +1,27 @@
+name: Check three claim services
+on:
+  push:
+    branches: [codex/qq-card-claim-once]
+    paths: ['Tools/service-preflight.cjs', '.github/workflows/service-preflight.yml']
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check public availability without credentials or orders
+        run: |
+          node --check Tools/service-preflight.cjs
+          node Tools/service-preflight.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-preflight
+          path: results/service-preflight.json
+          retention-days: 7
