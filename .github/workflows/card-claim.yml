@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   inspect:
+    if: ${{ false }} # One-time order already accepted; no further submissions.
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -26,6 +27,6 @@ jobs:
       - name: Inspect free product or submit once
         env:
           NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
-          CLAIM_MODE: submit-once
+          CLAIM_MODE: inspect
           QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
         run: node Tools/card-claim.cjs
