@@ -12,7 +12,10 @@ const {chromium}=require('playwright-core');
  await input.waitFor({timeout:35000});
  const wait=p.waitForResponse(r=>new URL(r.url()).pathname==='/api/queryOrder'&&(r.request().postData()||'').includes(q),{timeout:45000}).catch(()=>null);
  await input.fill(q);
- const r=await wait;if(!r){console.log('ORDER_LOOKUP {"status":"no_query_response","submitted":false}');return;}
+ let r=await wait;
+ if(!r){
+  r=await c.request.post('https://qqqzz.cc/api/queryOrder',{data:{type:2,name:q,page:1,size:10},timeout:30000});
+ }
  const j=await r.json();const list=Array.isArray(j.data)?j.data:[];
  const statuses=list.map(x=>{
   const v={};
