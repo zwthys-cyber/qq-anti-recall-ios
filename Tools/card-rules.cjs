@@ -48,8 +48,9 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
  console.log('PUBLIC_RULES '+JSON.stringify(body.split('\n').filter(x=>/每天|每日|名额|次数|限领|限购|限额|重置|库存|领取规则/.test(x)).map(clean).slice(0,30)));
  const links=await p.locator('a').evaluateAll(xs=>xs.map(a=>({text:a.textContent,href:a.getAttribute('href')})));
  console.log('RULE_LINKS '+JSON.stringify(links.filter(x=>/规则|说明|帮助/.test(x.text||'')).map(x=>({text:clean(x.text||''),href:(x.href||'').split('?')[0]})).slice(0,10)));
- for(const url of [...assets].sort((a,b)=>Number(/Order|order|estriction/.test(b))-Number(/Order|order|estriction/.test(a))).slice(0,10)){
+ for(const url of [...assets].sort((a,b)=>Number(/status|Status|Order|order|estriction/.test(b))-Number(/status|Status|Order|order|estriction/.test(a))).slice(0,20)){
   const r=await c.request.get(url,{timeout:20000});const text=await r.text();
+  if(/getOrderStatus/.test(text)&&! /OrdersView-/.test(url))console.log('PUBLIC_STATUS_MAPPING '+JSON.stringify({path:new URL(url).pathname,code:text.length<16000?text:[...text.matchAll(/getOrderStatus/g)].map(m=>text.slice(Math.max(0,m.index-2500),m.index+1200))}));
   if(/\/order-/.test(url))console.log('PUBLIC_ORDER_API_CODE '+JSON.stringify(text.slice(0,2500)));
   if(/OrdersView-/.test(url))console.log('PUBLIC_ORDER_STATUS_CODE '+JSON.stringify([...text.matchAll(/已完成|待处理|处理中|已退款|status|\.state/g)].slice(0,60).map(m=>clean(text.slice(Math.max(0,m.index-230),m.index+330)))));
   const matches=[...text.matchAll(/名额不足|领取次数|每天.{0,8}领取|每日.{0,8}领取|free_limit|limit_type|ip_limit|PreviewPrice|is_free|sale_restriction|限购/g)].slice(0,12);
