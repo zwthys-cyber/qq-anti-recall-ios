@@ -338,12 +338,43 @@ static void testFlash(void) {
                                 QARSetFlashEnabled(NO);
                                 waitUntil(^BOOL{ return self.controller.presentedViewController == nil; }, ^{
                                     check(self.controller.presentedViewController == nil, "turning off flash retention closes replay");
-                                    report(@"PASS: UIKit footer geometry, chat flash replay twice, independent switch, settings entry, reuse, history and account isolation");
-                                    fflush(stdout); exit(0);
+                                    [self verifyScrollFollowing];
                                 }, 100);
                             });
                         }];
                     });
+                });
+            });
+        });
+    });
+}
+- (void)verifyScrollFollowing {
+    QARFixtureAccount(10001); QARSetEnabled(YES);
+    NSMutableArray *records = [NSMutableArray new], *models = [NSMutableArray new];
+    for (NSInteger i=0; i<36; i++) {
+        id record = QARFixtureMessage(1000+i, 1000+i, @"scroll-fixture", 0, @"滚动位置测试");
+        [records addObject:record]; [models addObject:model(record)];
+    }
+    QARRememberMessages(records);
+    UITableView *table = self.controller.tableView;
+    table.contentInset = UIEdgeInsetsMake(0, 0, 96, 0); // Simulated composer/keyboard space.
+    self.controller.models = models; [table reloadData]; [table layoutIfNeeded];
+    [table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:35 inSection:0] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
+    after(^{
+        QARMarkRecalledUpdates(@[QARFixtureMessage(1035, 1035, @"scroll-fixture", 1700000000, nil)]);
+        after(^{
+            CGFloat visibleBottom = table.contentOffset.y + table.bounds.size.height - table.adjustedContentInset.bottom;
+            CGRect lastRow = [table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:35 inSection:0]];
+            check(CGRectGetMaxY(lastRow) <= visibleBottom + 2, "latest message footer remains above the composer after height growth");
+            [table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:12 inSection:0] atScrollPosition:UITableViewScrollPositionTop animated:NO];
+            after(^{
+                QARMarkRecalledUpdates(@[QARFixtureMessage(1012, 1012, @"scroll-fixture", 1700000000, nil)]);
+                after(^{
+                    CGFloat bottom = MAX(-table.adjustedContentInset.top,
+                        table.contentSize.height + table.adjustedContentInset.bottom - table.bounds.size.height);
+                    check(bottom - table.contentOffset.y > 100, "reading history is not forced to the latest message");
+                    report(@"PASS: UIKit footer geometry, chat flash replay twice, independent switch, settings isolation, busy updates, bottom following and history position");
+                    fflush(stdout); exit(0);
                 });
             });
         });

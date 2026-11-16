@@ -105,5 +105,5 @@ for name in ("badge-light.png", "badge-dark.png"):
                "unrelated_table_unchanged", "no_height_query_recursion", "footer_geometry", "normal_row", "reuse", "history_disk_restore",
                "dark_mode_render", "disabled", "account_switch", "settings_footer_preserved",
                "chat_flash_replay_twice", "flash_switch_independent", "flash_message_path_isolation",
-               "flash_source_deleted", "flash_disable_closes_preview"],
+               "flash_source_deleted", "flash_disable_closes_preview", "busy_table_burst_layouts", "bottom_follows_footer_growth", "history_not_forced_to_bottom"],
 }, indent=2) + "\n")

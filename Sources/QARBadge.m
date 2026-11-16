@@ -83,6 +83,8 @@
 @interface QARBadgeTableState : NSObject
 @property(nonatomic,strong) NSMapTable<NSIndexPath *, UITableViewCell *> *rows;
 @property(nonatomic) BOOL pending;
+@property(nonatomic) BOOL requestedAtBottom;
+@property(nonatomic) CGFloat requestedOffsetY;
 @end
 @implementation QARBadgeTableState
 - (instancetype)init { if ((self = [super init])) _rows = [NSMapTable strongToWeakObjectsMapTable]; return self; }
@@ -272,6 +274,16 @@ static BOOL ensureDelegate(UITableView *table) {
     [delegateHooks addObject:entry];
     return entry.result == QARHookInstalled;
 }
+static CGFloat bottomOffset(UITableView *table) {
+    return MAX(-table.adjustedContentInset.top,
+        table.contentSize.height + table.adjustedContentInset.bottom - table.bounds.size.height);
+}
+static BOOL userScrolling(UITableView *table) {
+    return table.isTracking || table.isDragging || table.isDecelerating;
+}
+static BOOL nearBottom(UITableView *table) {
+    return fabs(bottomOffset(table) - table.contentOffset.y) <= 24;
+}
 static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
     QARBadgeTableState *current = table ? objc_getAssociatedObject(table, &tableKey) : nil;
     if (!current) return;
@@ -285,6 +297,8 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
         });
         return;
     }
+    BOOL followBottom = !userScrolling(table) && (nearBottom(table) ||
+        (current.requestedAtBottom && fabs(table.contentOffset.y - current.requestedOffsetY) <= 2));
     // Only completed attempts consume the row budget; repeated layout calls while
     // an update is queued or QQ is applying its own batch must not consume it.
     for (UITableViewCell *cell in table.visibleCells) {
@@ -295,7 +309,12 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
             (needed > 0 && cell.bounds.size.height < state.baseHeight + needed - 1)) state.attempts++;
     }
     @try {
-        [UIView performWithoutAnimation:^{ [table beginUpdates]; [table endUpdates]; }];
+        [UIView performWithoutAnimation:^{
+            [table beginUpdates]; [table endUpdates];
+            [table layoutIfNeeded];
+            if (followBottom && !userScrolling(table))
+                [table setContentOffset:CGPointMake(table.contentOffset.x, bottomOffset(table)) animated:NO];
+        }];
         atomic_fetch_add(&heightChanges, 1);
     } @finally { current.pending = NO; }
     for (UITableViewCell *cell in table.visibleCells) refresh(cell);
@@ -303,6 +322,8 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
 static void requestHeight(UITableView *table) {
     QARBadgeTableState *tableState = table ? objc_getAssociatedObject(table, &tableKey) : nil;
     if (!tableState || tableState.pending || !ensureDelegate(table)) return;
+    tableState.requestedAtBottom = !userScrolling(table) && nearBottom(table);
+    tableState.requestedOffsetY = table.contentOffset.y;
     tableState.pending = YES;
     __weak UITableView *weakTable = table;
     dispatch_async(dispatch_get_main_queue(), ^{ performHeightUpdate(weakTable, 0); });
