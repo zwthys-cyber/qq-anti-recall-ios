@@ -51,7 +51,7 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
  for(const url of [...assets].sort((a,b)=>Number(/Order|order|estriction/.test(b))-Number(/Order|order|estriction/.test(a))).slice(0,10)){
   const r=await c.request.get(url,{timeout:20000});const text=await r.text();
   if(/\/order-/.test(url))console.log('PUBLIC_ORDER_API_CODE '+JSON.stringify(text.slice(0,2500)));
-  if(/OrdersView-/.test(url))console.log('PUBLIC_ORDER_QUERY_CODE '+JSON.stringify([...text.matchAll(/查询|密码|placeholder|queryOrder|fetchOrder/g)].slice(0,20).map(m=>clean(text.slice(Math.max(0,m.index-180),m.index+300)))));
+  if(/OrdersView-/.test(url))console.log('PUBLIC_ORDER_STATUS_CODE '+JSON.stringify([...text.matchAll(/已完成|待处理|处理中|已退款|status|\.state/g)].slice(0,60).map(m=>clean(text.slice(Math.max(0,m.index-230),m.index+330)))));
   const matches=[...text.matchAll(/名额不足|领取次数|每天.{0,8}领取|每日.{0,8}领取|free_limit|limit_type|ip_limit|PreviewPrice|is_free|sale_restriction|限购/g)].slice(0,12);
   console.log('PUBLIC_SCRIPT '+JSON.stringify({path:new URL(url).pathname,bytes:text.length,samples:matches.map(m=>clean(text.slice(Math.max(0,m.index-150),m.index+260)))}));
  }
