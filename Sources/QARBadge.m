@@ -3,6 +3,7 @@
 #import "QARAdapter.h"
 #import "QARHook.h"
 #import "QARStore.h"
+#import "QARFlash.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #include <math.h>
@@ -11,11 +12,14 @@
 @interface QARRecallPill : UIView
 @property(nonatomic,strong) UILabel *label;
 @property(nonatomic,strong) UIImageView *icon;
+@property(nonatomic,weak) id replayRecord;
+@property(nonatomic,copy) NSString *replayOwner;
 @end
 @implementation QARRecallPill
 - (instancetype)initWithFrame:(CGRect)frame {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.userInteractionEnabled = NO;
+    [self addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(replay)]];
     self.isAccessibilityElement = YES;
     self.accessibilityLabel = @"消息已撤回，原内容已保留";
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
@@ -42,6 +46,12 @@
     [self addSubview:self.label];
     return self;
 }
+- (void)replay {
+    if (!self.replayRecord || ![self.replayOwner isEqual:QARCurrentOwner()]) return;
+    UIResponder *responder = self;
+    while (responder && ![responder isKindOfClass:UIViewController.class]) responder = responder.nextResponder;
+    if (responder) QARPresentFlashRecord((UIViewController *)responder, self.replayRecord);
+}
 - (CGSize)sizeThatFits:(CGSize)size {
     CGSize label = [self.label sizeThatFits:size];
     return CGSizeMake(ceil(label.width) + 34, ceil(label.height) + 6);
@@ -63,6 +73,7 @@
 @property(nonatomic,copy) NSIndexPath *path;
 @property(nonatomic,copy) NSString *owner;
 @property(nonatomic) BOOL marked;
+@property(nonatomic) BOOL flash;
 @property(nonatomic) CGFloat reserved;
 @property(nonatomic) CGFloat baseHeight;
 @property(nonatomic) NSUInteger attempts;
@@ -89,7 +100,7 @@ static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
 static BOOL versionReady;
 static _Thread_local unsigned heightDepth;
-static atomic_uint_fast64_t noTable, detachedTable;
+static atomic_uint_fast64_t noTable, detachedTable, rejectedOrigin;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges, recordsFound, missingPath;
 static atomic_uint_fast64_t heightCalls, reservedRows, missingHeightMethod, delegateABIRejects, autoHeights;
 static atomic_uint_fast64_t staticCalls[8];
@@ -157,7 +168,7 @@ static void clearCell(UITableViewCell *cell) {
     QARBadgeCellState *state = cell ? objc_getAssociatedObject(cell, &stateKey) : nil;
     removeRow(state, cell);
     [state.pill removeFromSuperview]; state.pill = nil; state.record = nil; state.owner = nil;
-    state.marked = NO; state.reserved = 0; state.baseHeight = 0; state.attempts = 0;
+    state.marked = NO; state.flash = NO; state.reserved = 0; state.baseHeight = 0; state.attempts = 0;
 }
 static double delegateHeight(QARDelegateHook *entry, id receiver, UITableView *table, NSIndexPath *path) {
     BOOL nested = heightDepth > 0; heightDepth++;
@@ -175,27 +186,33 @@ static double delegateHeight(QARDelegateHook *entry, id receiver, UITableView *t
     if (!isfinite(original) || original <= 0) {
         state.reserved = 0; atomic_fetch_add(&autoHeights, 1); return original;
     }
-    BOOL marked = state.marked && state.record && QAREnabled() && [state.owner isEqual:QARCurrentOwner()];
-    CGFloat extra = marked ? footerHeight() : 0;
+    BOOL sameOwner = state.record && [state.owner isEqual:QARCurrentOwner()];
+    BOOL marked = sameOwner && state.marked && QAREnabled();
+    BOOL flash = sameOwner && state.flash && QARFlashEnabled();
+    CGFloat extra = flash ? MAX(44, footerHeight()) : (marked ? footerHeight() : 0);
     state.baseHeight = original; state.reserved = extra;
     if (extra) atomic_fetch_add(&reservedRows, 1);
     return original + extra;
     } @finally { heightDepth--; }
 }
 static BOOL delegateFromQQ(Class cls) {
-#ifdef QAR_TESTING
-    return cls != Nil;
-#else
-    const char *path = class_getImageName(cls);
-    if (!path) return NO;
-    NSString *imagePath = [NSString stringWithUTF8String:path];
-    return [imagePath hasPrefix:[NSBundle.mainBundle.bundlePath stringByAppendingString:@"/"]];
-#endif
+    NSString *bundle = [NSBundle.mainBundle.bundlePath stringByResolvingSymlinksInPath];
+    if (!bundle.length) return NO;
+    // KVO/runtime subclasses may have no image. Walk their superclass chain,
+    // and normalize /var versus /private/var before checking the app boundary.
+    for (Class candidate = cls; candidate && candidate != NSObject.class; candidate = class_getSuperclass(candidate)) {
+        const char *path = class_getImageName(candidate);
+        if (!path) continue;
+        NSString *imagePath = [[NSString stringWithUTF8String:path] stringByResolvingSymlinksInPath];
+        if ([imagePath hasPrefix:[bundle stringByAppendingString:@"/"]]) return YES;
+    }
+    return NO;
 }
+
 static BOOL ensureDelegate(UITableView *table) {
     if (!versionReady || !table.delegate) return NO;
     Class cls = object_getClass(table.delegate);
-    if (!delegateFromQQ(cls)) return NO;
+    if (!delegateFromQQ(cls)) { atomic_fetch_add(&rejectedOrigin, 1); return NO; }
     SEL selector = @selector(tableView:heightForRowAtIndexPath:);
     for (QARDelegateHook *entry in delegateHooks)
         if (entry.target == cls) return entry.original && class_getMethodImplementation(cls, selector) == entry.replacement;
@@ -244,6 +261,7 @@ static void refresh(UITableViewCell *cell) {
     }
     state.record = record; state.owner = owner;
     state.marked = record && QARIsMarkedRecord(record);
+    state.flash = record && QARFlashURLForRecord(record) != nil;
     if (record) atomic_fetch_add(&recordsFound, 1);
     UITableView *table = parentTable(cell);
     if (record && !table) atomic_fetch_add(&noTable, 1);
@@ -261,12 +279,12 @@ static void refresh(UITableViewCell *cell) {
             ensureDelegate(table);
         } else atomic_fetch_add(&missingPath, 1);
     }
-    if (!state.marked) {
+    if (!state.marked && !state.flash) {
         state.pill.hidden = YES;
         if (state.reserved > 0 && table.window && state.attempts++ < 3) requestHeight(table);
         return;
     }
-    CGFloat extra = footerHeight();
+    CGFloat extra = state.flash ? MAX(44, footerHeight()) : footerHeight();
     if (state.reserved < extra - 0.5 || cell.bounds.size.height < state.baseHeight + extra - 1) {
         state.pill.hidden = YES;
         if (table.window && state.path && state.attempts++ < 3) requestHeight(table);
@@ -277,9 +295,17 @@ static void refresh(UITableViewCell *cell) {
         state.pill = [[QARRecallPill alloc] initWithFrame:CGRectZero];
         [cell.contentView addSubview:state.pill]; atomic_fetch_add(&displayed, 1);
     }
+    state.pill.replayRecord = state.flash ? record : nil;
+    state.pill.replayOwner = state.flash ? owner : nil;
+    state.pill.userInteractionEnabled = state.flash;
+    state.pill.label.text = state.flash ? (state.marked ? @"已撤回 · 已保留 · 查看闪照" : @"闪照 · 再次查看") : @"已撤回 · 已保留";
+    state.pill.accessibilityLabel = state.pill.label.text;
+    state.pill.accessibilityTraits = state.flash ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
+    state.pill.icon.image = [UIImage systemImageNamed:state.flash ? @"photo.circle.fill" : @"arrow.uturn.backward.circle.fill"];
     CGFloat width = cell.contentView.bounds.size.width;
     CGSize size = [state.pill sizeThatFits:CGSizeMake(MAX(0, width - 32), CGFLOAT_MAX)];
     size.width = MIN(size.width, MAX(0, width - 32));
+    if (state.flash) size.height = MAX(38, size.height);
     CGFloat x = MIN(56, MAX(16, width - size.width - 16));
     state.pill.frame = CGRectMake(x, cell.contentView.bounds.size.height - extra + 3, size.width, size.height);
     state.pill.hidden = NO; [cell.contentView bringSubviewToFront:state.pill];
@@ -383,12 +409,12 @@ NSDictionary *QARBadgeStatus(void) {
         @"delegate_height_calls": @(atomic_load(&heightCalls)), @"rows_with_footer_reserved": @(atomic_load(&reservedRows)),
         @"records_found": @(atomic_load(&recordsFound)), @"table_not_attached": @(atomic_load(&noTable)),
         @"table_without_window": @(atomic_load(&detachedTable)), @"row_path_unavailable": @(atomic_load(&missingPath)),
-        @"delegate_method_missing": @(atomic_load(&missingHeightMethod)), @"delegate_abi_rejected": @(atomic_load(&delegateABIRejects)),
+        @"delegate_origin_rejected": @(atomic_load(&rejectedOrigin)), @"delegate_method_missing": @(atomic_load(&missingHeightMethod)), @"delegate_abi_rejected": @(atomic_load(&delegateABIRejects)),
         @"automatic_height_rows": @(atomic_load(&autoHeights)), @"footer_space_unavailable": @(atomic_load(&unresolved)),
         @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
-    atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);
+    atomic_store(&rejectedOrigin, 0); atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);
     atomic_store(&displayed, 0); atomic_store(&unresolved, 0); atomic_store(&heightChanges, 0);
     atomic_store(&heightCalls, 0); atomic_store(&reservedRows, 0); atomic_store(&recordsFound, 0);
     atomic_store(&missingPath, 0); atomic_store(&missingHeightMethod, 0); atomic_store(&delegateABIRejects, 0);

@@ -42,7 +42,7 @@ static NSDictionary *controlStatus(void) {
     if (!presenter || [presenter isKindOfClass:UIAlertController.class]) return;
     NSDictionary *status = controlStatus();
     NSString *message = [NSString stringWithFormat:
-        @"插件 %@\nQQ %@\n已加载接口：%@\n本次保存：%@ · 历史恢复：%@\n\n已保留的撤回消息下方显示精美标识。打开闪照后保存本机图片副本，可在本面板重复查看，最多 100 张 / 128 MB。\n开启后会在本机保存消息副本，按账号隔离，最多 512 条 / 16 MB；不上传，诊断不含消息内容。旧版没有保存的消息无法补回。",
+        @"插件 %@\nQQ %@\n已加载接口：%@\n本次保存：%@ · 历史恢复：%@\n\n已保留的撤回消息下方显示精美标识。打开闪照后保留本机副本，在对应聊天消息下方点击“闪照 · 再次查看”，最多 100 张 / 128 MB。闪照保留使用独立开关。\n开启后会在本机保存消息副本，按账号隔离，最多 512 条 / 16 MB；不上传，诊断不含消息内容。旧版没有保存的消息无法补回。",
         status[@"plugin_version"], status[@"build_version"], status[@"installed_hooks"],
         status[@"message_store"][@"snapshots_saved"], status[@"message_store"][@"history_records_restored"]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"QQ 防撤回 · 实验版"
@@ -53,9 +53,9 @@ static NSDictionary *controlStatus(void) {
                 QARSetEnabled(!QAREnabled());
             }]];
     }
-    [alert addAction:[UIAlertAction actionWithTitle:@"查看保留的闪照" style:UIAlertActionStyleDefault
-        handler:^(__unused UIAlertAction *action) {
-            dispatch_async(dispatch_get_main_queue(), ^{ QARPresentFlash([self presenter]); });
+    [alert addAction:[UIAlertAction actionWithTitle:QARFlashEnabled() ? @"关闭闪照保留" : @"开启闪照保留"
+        style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+            QARSetFlashEnabled(!QARFlashEnabled());
         }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清除当前账号的闪照" style:UIAlertActionStyleDestructive
         handler:^(__unused UIAlertAction *action) { QARClearFlash(); }]];

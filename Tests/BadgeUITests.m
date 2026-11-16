@@ -129,7 +129,7 @@ static void testSettings(void) {
     settingsResult = nil;
     report(@"STEP: settings factory, in-menu entry, original footer and duplicate prevention passed");
 }
-static id flashResult;
+static id flashResult, flashChatRecord;
 static id flashDecode(id receiver, SEL cmd, id path) { (void)receiver; (void)cmd; (void)path; return flashResult; }
 static void testFlash(void) {
     Class service = objc_allocateClassPair(NSObject.class, "PhotoBrowserFlashPictureService", 0);
@@ -137,7 +137,7 @@ static void testFlash(void) {
     objc_registerClassPair(service);
     QARInstallFlash(QARFixtureInfo());
     QARFlashUseTestDirectory([NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"flash-fixture"]]);
-    QARClearFlash();
+    QARClearFlash(); QARSetFlashEnabled(YES);
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(16, 16)];
     UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         [UIColor.systemTealColor setFill]; CGContextFillRect(context.CGContext, CGRectMake(0, 0, 16, 16));
@@ -155,16 +155,33 @@ static void testFlash(void) {
     flashResult = image;
     ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
     check(QARFlashFiles().count == 1, "duplicate decrypted image is not duplicated");
-    QARClearFlash(); QARSetEnabled(NO);
+    QARClearFlash(); QARSetFlashEnabled(NO);
     ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
     check(QARFlashFiles().count == 0, "disabled mode saves no flash images");
-    QARSetEnabled(YES);
+    QARSetFlashEnabled(YES);
     ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
     QARFixtureAccount(20002);
     check(QARFlashFiles().count == 0, "flash gallery is account isolated");
     QARFixtureAccount(10001);
     check(QARFlashFiles().count == 1, "original account retains its flash copy");
-    QARClearFlash(); check(QARFlashFiles().count == 0, "explicit clear removes retained flash images");
+    id record = QARFixtureMessage(44, 44, @"flash-peer", 0, nil);
+    id pic = QARModelCreate(@"OCPicElement"), element = QARModelCreate(@"OCMsgElement");
+    QARModelWrite(pic, @"isFlashPic", @YES); QARModelWrite(pic, @"sourcePath", @"synthetic");
+    QARModelWrite(element, @"picElement", pic); QARModelWrite(record, @"elements", @[element]);
+    check(QARFlashURLForRecord(record) != nil, "chat message resolves only its retained flash image");
+    QARSetEnabled(NO);
+    check(QARFlashURLForRecord(record) != nil, "flash retention works independently of anti-recall switch");
+    QARSetEnabled(YES);
+    QARModelWrite(pic, @"sourcePath", @"different-message");
+    check(QARFlashURLForRecord(record) == nil, "unmatched chat message cannot open another image");
+    QARModelWrite(pic, @"sourcePath", @"synthetic"); QARModelWrite(pic, @"isFlashPic", @NO);
+    check(QARFlashURLForRecord(record) == nil, "ordinary pictures never receive flash replay controls");
+    QARModelWrite(pic, @"isFlashPic", @YES); QARSetFlashEnabled(NO);
+    check(QARFlashURLForRecord(record) == nil, "flash switch disables chat replay");
+    QARSetFlashEnabled(YES);
+    QARClearFlash(); check(QARFlashFiles().count == 0 && QARFlashURLForRecord(record) == nil, "explicit clear removes retained images and chat lookup");
+    ((id (*)(id, SEL, id))objc_msgSend)(service, selector, @"synthetic");
+    flashChatRecord = record;
     flashResult = nil;
     report(@"STEP: flash copy, repeated viewing after deletion, pass-through, deduplication, disable, account isolation and clear passed");
 }
@@ -217,7 +234,7 @@ static void testFlash(void) {
     id normal = QARFixtureMessage(2, 2, @"fixture", 0, @"普通消息保持原样。");
     QARRememberMessages(@[original]); QARMarkRecalledUpdates(@[recalled]);
     self.controller = [[FixtureController alloc] initWithStyle:UITableViewStylePlain];
-    self.controller.models = @[model(original), model(normal)];
+    self.controller.models = @[model(original), model(normal), model(flashChatRecord)];
     self.controller.title = @"防撤回标识 · 模拟数据";
     self.controller.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.controller.tableView.estimatedRowHeight = 0;
@@ -239,6 +256,12 @@ static void testFlash(void) {
         check([self.controller tableView:unrelated heightForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]] == 78,
             "same delegate class preserves an unrelated table");
         check(second.bounds.size.height == 78, "ordinary row keeps its original height");
+        UITableViewCell *flashCell = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]];
+        UIView *flashPill = QARBadgeViewForTest(flashCell);
+        check(flashPill && !flashPill.hidden && flashPill.userInteractionEnabled &&
+            [flashPill.accessibilityLabel isEqual:@"闪照 · 再次查看"], "flash replay entry appears on its chat message");
+        check(CGRectGetMaxY(flashPill.frame) <= flashCell.contentView.bounds.size.height,
+            "flash replay footer stays within its own message row");
         report(@"STEP: opaque view model, false bind result, actual delegate, badge geometry and ordinary rows passed");
         [self savePreview:@"badge-light.png"];
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
@@ -248,7 +271,7 @@ static void testFlash(void) {
             [cell prepareForReuse]; [cell bindViewModel:model(normal)]; [cell layoutIfNeeded];
             check(!QARBadgeViewForTest(cell) || QARBadgeViewForTest(cell).hidden, "reuse clears the previous message badge");
             QARStoreDropMemoryForTest();
-            self.controller.models = @[model(QARRestoreHistory(@[recalled])[0]), model(normal)];
+            self.controller.models = @[model(QARRestoreHistory(@[recalled])[0]), model(normal), model(flashChatRecord)];
             [table reloadData];
             after(^{
                 UITableViewCell *restoredCell = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
@@ -261,8 +284,23 @@ static void testFlash(void) {
                     QARSetEnabled(YES); QARFixtureAccount(20002);
                     QARBadgeRefreshCellForTest(restoredCell);
                     check(!QARBadgeViewForTest(restoredCell) || QARBadgeViewForTest(restoredCell).hidden, "account switch hides old markers");
-                    report(@"PASS: UIKit footer geometry, normal rows, cell reuse, history reload, dark mode, disable and account switch");
-                    fflush(stdout); exit(0);
+                    QARFixtureAccount(10001);
+                    QARPresentFlashRecord(self.controller, flashChatRecord);
+                    after(^{
+                        check(self.controller.presentedViewController != nil, "chat replay opens retained image");
+                        [self.controller dismissViewControllerAnimated:NO completion:^{
+                            QARPresentFlashRecord(self.controller, flashChatRecord);
+                            after(^{
+                                check(self.controller.presentedViewController != nil, "same chat message opens its image repeatedly");
+                                QARSetFlashEnabled(NO);
+                                after(^{
+                                    check(self.controller.presentedViewController == nil, "turning off flash retention closes replay");
+                                    report(@"PASS: UIKit message footers, chat flash replay twice, independent switch, settings entry, reuse, history and account isolation");
+                                    fflush(stdout); exit(0);
+                                });
+                            });
+                        }];
+                    });
                 });
             });
         });

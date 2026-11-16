@@ -2,6 +2,8 @@
 #import "QARHook.h"
 #import "QARAdapter.h"
 #import "QARStore.h"
+#import "QARSnapshot.h"
+#import <objc/message.h>
 #import <QuickLook/QuickLook.h>
 #import <CommonCrypto/CommonDigest.h>
 #include <stdatomic.h>
@@ -11,6 +13,23 @@ static QARHookResult result = QARHookMissingClass;
 static dispatch_queue_t storage;
 static NSURL *root;
 static atomic_ullong calls, saved, failures, unsupported;
+BOOL QARFlashEnabled(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"QARFlashRetentionEnabled"]; }
+void QARSetFlashEnabled(BOOL enabled) {
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:@"QARFlashRetentionEnabled"];
+    [NSNotificationCenter.defaultCenter postNotificationName:QARStoreChangedNotification object:nil];
+}
+static NSString *pathKey(id path) {
+    if (![path isKindOfClass:NSString.class] || ![path length] || [path length] > 4096) return nil;
+    NSString *home = [NSHomeDirectory() stringByResolvingSymlinksInPath];
+    NSString *normalized = [path stringByResolvingSymlinksInPath];
+    // Sandbox UUID changes after reinstall; retain a stable app-relative key.
+    if ([normalized hasPrefix:[home stringByAppendingString:@"/"]]) normalized = [normalized substringFromIndex:home.length];
+    NSData *bytes = [normalized dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH]; CC_SHA256(bytes.bytes, (CC_LONG)bytes.length, digest);
+    NSMutableString *key = [NSMutableString new];
+    for (unsigned i=0; i<sizeof(digest); i++) [key appendFormat:@"%02x", digest[i]];
+    return key;
+}
 static void prepare(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -45,8 +64,8 @@ static UIImage *decodedImage(id value) {
     }
     return data ? [UIImage imageWithData:data] : nil;
 }
-static void capture(id value, NSString *owner) {
-    if (!owner || !QAREnabled() || ![owner isEqual:QARCurrentOwner()]) return;
+static void capture(id value, NSString *owner, id sourcePath) {
+    if (!owner || !QARFlashEnabled() || ![owner isEqual:QARCurrentOwner()]) return;
     UIImage *image = decodedImage(value);
     if (!image || image.size.width * image.scale * image.size.height * image.scale > 32000000) {
         atomic_fetch_add(&unsupported, 1); return;
@@ -65,7 +84,7 @@ static void capture(id value, NSString *owner) {
     for (unsigned i = 0; i < sizeof(digest); i++) [name appendFormat:@"%02x", digest[i]];
     prepare();
     dispatch_sync(storage, ^{
-        if (!QAREnabled() || ![owner isEqual:QARCurrentOwner()]) return;
+        if (!QARFlashEnabled() || ![owner isEqual:QARCurrentOwner()]) return;
         NSURL *directory = [root URLByAppendingPathComponent:owner isDirectory:YES];
         NSFileManager *manager = NSFileManager.defaultManager;
         NSDictionary *attributes = @{NSFilePosixPermissions: @0700, NSFileProtectionKey: NSFileProtectionCompleteUntilFirstUserAuthentication};
@@ -74,26 +93,45 @@ static void capture(id value, NSString *owner) {
         }
         [directory setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
         NSURL *target = [directory URLByAppendingPathComponent:[name stringByAppendingPathExtension:@"png"]];
-        if ([manager fileExistsAtPath:target.path]) return;
-        if (![data writeToURL:target options:NSDataWritingAtomic | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication error:nil]) {
+        BOOL exists = [manager fileExistsAtPath:target.path];
+        if (!exists && ![data writeToURL:target options:NSDataWritingAtomic | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication error:nil]) {
             atomic_fetch_add(&failures, 1); return;
         }
         [manager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:target.path error:nil];
         [target setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
-        atomic_fetch_add(&saved, 1);
+        if (!exists) atomic_fetch_add(&saved, 1);
         unsigned long long bytes = 0; NSUInteger count = 0;
         for (NSURL *url in files(owner)) {
             NSNumber *size; [url getResourceValue:&size forKey:NSURLFileSizeKey error:nil];
             bytes += size.unsignedLongLongValue;
             if (++count > 100 || bytes > 128*1024*1024) [manager removeItemAtURL:url error:nil];
         }
+        NSString *key = pathKey(sourcePath);
+        if (key && [manager fileExistsAtPath:target.path]) {
+            NSURL *indexURL = [directory URLByAppendingPathComponent:@"paths.plist"];
+            NSMutableDictionary *index = [[NSDictionary dictionaryWithContentsOfURL:indexURL] mutableCopy] ?: [NSMutableDictionary new];
+            for (NSString *oldKey in index.allKeys) {
+                id name = index[oldKey];
+                if (![name isKindOfClass:NSString.class] || ![name isEqual:[name lastPathComponent]] ||
+                    ![manager fileExistsAtPath:[directory URLByAppendingPathComponent:name].path]) [index removeObjectForKey:oldKey];
+            }
+            if (index.count >= 512 && !index[key]) [index removeObjectForKey:index.allKeys.firstObject];
+            index[key] = target.lastPathComponent;
+            NSData *encoded = [NSPropertyListSerialization dataWithPropertyList:index format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+            if (![encoded writeToURL:indexURL options:NSDataWritingAtomic | NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication error:nil])
+                atomic_fetch_add(&failures, 1);
+            [manager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:indexURL.path error:nil];
+        }
+    });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:QARStoreChangedNotification object:nil];
     });
 }
 static id decryptImage(id receiver, SEL selector, id path) {
     atomic_fetch_add(&calls, 1);
-    NSString *owner = QAREnabled() ? QARCurrentOwner() : nil;
+    NSString *owner = QARFlashEnabled() ? QARCurrentOwner() : nil;
     id value = ((id (*)(id, SEL, id))original)(receiver, selector, path);
-    @try { capture(value, owner); }
+    @try { capture(value, owner, path); }
     @catch (__unused NSException *error) { atomic_fetch_add(&failures, 1); }
     return value;
 }
@@ -113,7 +151,7 @@ void QARClearFlash(void) {
 }
 NSDictionary *QARFlashStatus(void) {
     Class cls = object_getClass(NSClassFromString(@"PhotoBrowserFlashPictureService"));
-    return @{@"hook_result": @(result), @"installed_hooks": @(original != NULL),
+    return @{@"enabled": @(QARFlashEnabled()), @"replay_location": @"chat_message_footer", @"hook_result": @(result), @"installed_hooks": @(original != NULL),
         @"hook_active": @(original && class_getMethodImplementation(cls, NSSelectorFromString(@"decryptImageWithImagePath:")) == (IMP)decryptImage),
         @"decrypt_calls": @(atomic_load(&calls)), @"images_saved": @(atomic_load(&saved)),
         @"save_failures": @(atomic_load(&failures)), @"unsupported_results": @(atomic_load(&unsupported)),
@@ -133,7 +171,7 @@ NSDictionary *QARFlashStatus(void) {
 - (void)checkOwner:(NSNotification *)note {
     (void)note;
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (![self.owner isEqual:QARCurrentOwner()] || !QARFlashFiles().count) {
+        if (!QARFlashEnabled() || ![self.owner isEqual:QARCurrentOwner()] || ![NSFileManager.defaultManager fileExistsAtPath:self.images.firstObject.path]) {
             self.images = @[]; [self reloadData]; [self dismissViewControllerAnimated:YES completion:nil];
         }
     });
@@ -146,15 +184,54 @@ NSDictionary *QARFlashStatus(void) {
 }
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 @end
-void QARPresentFlash(UIViewController *presenter) {
-    NSArray *images = QARFlashFiles();
-    if (!images.count) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"暂无保留的闪照"
-            message:@"开启防撤回后打开新收到的闪照。成功保存的图片会出现在这里，可反复查看。" preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]];
-        [presenter presentViewController:alert animated:YES completion:nil]; return;
+static NSURL *fileForPaths(NSArray *paths, NSString *owner) {
+    prepare(); __block NSURL *found = nil;
+    dispatch_sync(storage, ^{
+        NSURL *directory = [root URLByAppendingPathComponent:owner];
+        NSDictionary *index = [NSDictionary dictionaryWithContentsOfURL:[directory URLByAppendingPathComponent:@"paths.plist"]];
+        for (id path in paths) {
+            NSString *key = pathKey(path); id name = key ? index[key] : nil;
+            if (![name isKindOfClass:NSString.class] || ![name isEqual:[name lastPathComponent]] || ![[name pathExtension] isEqual:@"png"]) continue;
+            NSURL *candidate = [directory URLByAppendingPathComponent:name];
+            if ([NSFileManager.defaultManager fileExistsAtPath:candidate.path]) { found = candidate; break; }
+        }
+    });
+    return found;
+}
+NSURL *QARFlashURLForRecord(id record) {
+    NSString *owner = QARCurrentOwner();
+    if (!QARFlashEnabled() || !owner || ![NSStringFromClass(object_getClass(record)) isEqual:@"OCMsgRecord"]) return nil;
+    id elements = QARModelRead(record, @"elements", NULL);
+    if (![elements isKindOfClass:NSArray.class] || [elements count] > 256) return nil;
+    for (id element in elements) {
+        id pic = QARModelRead(element, @"picElement", NULL);
+        if (![NSStringFromClass(object_getClass(pic)) isEqual:@"OCPicElement"]) continue;
+        id flash = QARModelRead(pic, @"isFlashPic", NULL);
+        if (![flash isKindOfClass:NSNumber.class] || ![flash boolValue]) continue;
+        NSMutableArray *paths = [NSMutableArray new];
+        id source = QARModelRead(pic, @"sourcePath", NULL);
+        if ([source isKindOfClass:NSString.class]) [paths addObject:source];
+        Class service = NSClassFromString(@"_TtC20AIOChatServiceModule23NTAIOChatMessageService");
+        for (NSString *name in @[@"getFlashPicNormalFilePathWithPicElement:isOrigin:", @"getFlashPicResultFilePathWithPicElement:isOrigin:"]) {
+            SEL selector = NSSelectorFromString(name);
+            Method method = class_getClassMethod(service, selector);
+            if (!method || !QARSignaturesMatch(method_getTypeEncoding(method), "@28@0:8@16B24")) continue;
+            for (unsigned flag=0; flag<2; flag++) {
+                @try {
+                    id path = ((id (*)(id,SEL,id,_Bool))objc_msgSend)(service, selector, pic, flag != 0);
+                    if ([path isKindOfClass:NSString.class]) [paths addObject:path];
+                } @catch (__unused NSException *exception) {}
+            }
+        }
+        NSURL *url = fileForPaths(paths, owner);
+        if (url && [owner isEqual:QARCurrentOwner()]) return url;
     }
-    QARFlashPreview *preview = [QARFlashPreview new]; preview.images = images; preview.owner = QARCurrentOwner();
+    return nil;
+}
+void QARPresentFlashRecord(UIViewController *presenter, id record) {
+    if (!NSThread.isMainThread || !presenter || presenter.presentedViewController) return;
+    NSURL *url = QARFlashURLForRecord(record); if (!url) return;
+    QARFlashPreview *preview = [QARFlashPreview new]; preview.images = @[url]; preview.owner = QARCurrentOwner();
     [presenter presentViewController:preview animated:YES completion:nil];
 }
 #ifdef QAR_TESTING

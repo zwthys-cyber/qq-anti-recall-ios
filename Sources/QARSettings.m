@@ -31,6 +31,8 @@ static void attach(UIViewController *controller) {
     if (objc_getAssociatedObject(table.tableFooterView, &footerKey)) return;
     UIView *previous = table.tableFooterView;
     CGFloat oldHeight = previous ? previous.frame.size.height : 0;
+    // Detach through UITableView before reparenting; its setter removes the old footer.
+    table.tableFooterView = nil;
     UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, table.bounds.size.width, oldHeight + 76)];
     footer.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     if (previous) { previous.frame = CGRectMake(0, 0, footer.bounds.size.width, oldHeight); [footer addSubview:previous]; }
