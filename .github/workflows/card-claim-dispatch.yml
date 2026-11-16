@@ -7,7 +7,7 @@ permissions:
   actions: write
 jobs:
   dispatch:
-    if: github.run_attempt == 1
+    if: ${{ false }} # Independent-egress experiment dispatched; trigger disabled.
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
