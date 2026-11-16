@@ -68,3 +68,16 @@ QQ iOS 插件仍在 `main`，本次只新增独立 Actions 入口，不修改插
 
 参考项目：[GaoZitian/qqqzz-card-claim](https://github.com/GaoZitian/qqqzz-card-claim)；第三方站点 `qqqzz.cc`，商品 83。
 参考项目的“每天100个”说明不是持续可用性保证。本工具不修改本机获赞计数，不承诺突破额度。
+
+## 2026-11-16 领取规则调查
+
+通过 GitHub Actions 只读访问商品页面和已加载的公开前端资源，未读取目标 Secret、未下单。
+
+- 页面公告明确写着“本站点依旧可以每天免费领取100个名片赞哦”。
+- 商品 83 的公开接口返回 `stock=99999`，因此不能仅凭“名额不足”断言商品页面库存售罄；这个库存字段也不等于免费领取额度。
+- `min_order_num=1`、`max_order_num=100` 是订单数量字段，不能据此认定允许每天重复领取 100 次。
+- 页面使用服务端价格预览与下单接口，已实测预览成功后下单仍可能拒绝。
+- 未获得可以确定计数维度（账号、IP、会话等）或准确重置时间的公开证据。全站配置中的 `nextResetSeconds=0` 不能解释为本商品领取额度已恢复。
+- 本轮未验证换 IP 是否有效，也未增加点赞。不得把项目作者的经验描述标成本站实测规则。
+
+证据：[公开页面与接口检查](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/runs/43806956639)、[商品配置与前端资源检查](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/runs/43807113074)。
