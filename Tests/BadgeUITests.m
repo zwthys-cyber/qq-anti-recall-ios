@@ -104,6 +104,13 @@ static FixtureModel *model(id record) {
 static void after(dispatch_block_t block) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), block);
 }
+static void waitUntil(BOOL (^condition)(void), dispatch_block_t done, NSUInteger remaining) {
+    if (condition()) { done(); return; }
+    check(remaining > 0, "UI transition must finish within ten seconds");
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 10), dispatch_get_main_queue(), ^{
+        waitUntil(condition, done, remaining - 1);
+    });
+}
 static UIViewController *settingsResult;
 static id settingsFactory(id receiver, SEL cmd) { (void)receiver; (void)cmd; return settingsResult; }
 @interface FixtureSettingsController : UITableViewController @end
@@ -295,11 +302,11 @@ static void testFlash(void) {
                             after(^{
                                 check(self.controller.presentedViewController != nil, "same chat message opens its image repeatedly");
                                 QARSetFlashEnabled(NO);
-                                after(^{
+                                waitUntil(^BOOL{ return self.controller.presentedViewController == nil; }, ^{
                                     check(self.controller.presentedViewController == nil, "turning off flash retention closes replay");
                                     report(@"PASS: UIKit footer geometry, chat flash replay twice, independent switch, settings entry, reuse, history and account isolation");
                                     fflush(stdout); exit(0);
-                                });
+                                }, 100);
                             });
                         }];
                     });

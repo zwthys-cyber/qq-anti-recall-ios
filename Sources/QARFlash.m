@@ -164,24 +164,35 @@ NSDictionary *QARFlashStatus(void) {
 @property(nonatomic,copy) NSString *owner;
 @end
 @implementation QARFlashPreview
-- (void)viewDidLoad {
-    [super viewDidLoad]; self.dataSource = self;
+- (instancetype)init {
+    if (!(self = [super init])) return nil;
+    self.dataSource = self;
     for (NSString *name in @[QARStoreChangedNotification, UIApplicationDidBecomeActiveNotification])
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(checkOwner:) name:name object:nil];
+    return self;
 }
 - (void)checkOwner:(NSNotification *)note {
     (void)note;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!QARFlashEnabled() || ![self.owner isEqual:QARCurrentOwner()] || ![NSFileManager.defaultManager fileExistsAtPath:self.images.firstObject.path]) {
-            self.images = @[]; [self reloadData]; [self dismissViewControllerAnimated:YES completion:nil];
+            self.images = @[];
+            if (self.isViewLoaded) { self.view.hidden = YES; [self reloadData]; }
+            // A switch/account change can arrive while Quick Look is still presenting.
+            // Hide content immediately and dismiss after the presentation transition.
+            id<UIViewControllerTransitionCoordinator> coordinator = self.transitionCoordinator;
+            if (self.isBeingPresented && coordinator) {
+                [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+                    [self dismissViewControllerAnimated:NO completion:nil];
+                }];
+            } else [self dismissViewControllerAnimated:NO completion:nil];
         }
     });
 }
 - (NSInteger)numberOfPreviewItemsInPreviewController:(QLPreviewController *)controller {
-    (void)controller; return [self.owner isEqual:QARCurrentOwner()] ? self.images.count : 0;
+    (void)controller; return QARFlashEnabled() && [self.owner isEqual:QARCurrentOwner()] ? self.images.count : 0;
 }
 - (id<QLPreviewItem>)previewController:(QLPreviewController *)controller previewItemAtIndex:(NSInteger)index {
-    (void)controller; return [self.owner isEqual:QARCurrentOwner()] && index >= 0 && (NSUInteger)index < self.images.count ? self.images[index] : nil;
+    (void)controller; return QARFlashEnabled() && [self.owner isEqual:QARCurrentOwner()] && index >= 0 && (NSUInteger)index < self.images.count ? self.images[index] : nil;
 }
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 @end
