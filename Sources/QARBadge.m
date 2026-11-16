@@ -95,6 +95,17 @@
 @end
 @implementation QARDelegateHook @end
 
+@interface QARCellHook : NSObject
+@property(nonatomic) Class target;
+@property(nonatomic) SEL selector;
+@property(nonatomic) IMP original;
+@property(nonatomic) IMP replacement;
+@property(nonatomic) QARHookResult result;
+@property(nonatomic) unsigned long long calls;
+@end
+@implementation QARCellHook @end
+static NSMutableArray<QARCellHook *> *actualCellHooks;
+static void ensureActualCell(UITableViewCell *cell);
 static char stateKey, tableKey;
 static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
@@ -135,6 +146,7 @@ static UITableView *parentTable(UIView *view) {
 }
 static QARBadgeCellState *stateFor(UITableViewCell *cell) {
     if (!cell) return nil;
+    ensureActualCell(cell);
     QARBadgeCellState *state = objc_getAssociatedObject(cell, &stateKey);
     if (!state) {
         state = [QARBadgeCellState new];
@@ -209,6 +221,30 @@ static BOOL delegateFromQQ(Class cls) {
     return NO;
 }
 
+static void ensureActualCell(UITableViewCell *cell) {
+    if (!versionReady || !NSThread.isMainThread) return;
+    Class cls = object_getClass(cell);
+    if (!delegateFromQQ(cls) || [NSStringFromClass(cls) isEqual:@"_TtC6AIOLib7AIOCell"]) return;
+    if (!actualCellHooks) actualCellHooks = [NSMutableArray new];
+    for (NSString *name in @[@"layoutSubviews", @"prepareForReuse"]) {
+        SEL selector = NSSelectorFromString(name); BOOL exists = NO;
+        for (QARCellHook *entry in actualCellHooks) if (entry.target == cls && entry.selector == selector) { exists = YES; break; }
+        if (exists || actualCellHooks.count >= 32) continue;
+        QARCellHook *entry = [QARCellHook new]; entry.target = cls; entry.selector = selector;
+        BOOL reuse = [name isEqual:@"prepareForReuse"];
+        entry.replacement = imp_implementationWithBlock(^(UITableViewCell *receiver) {
+            entry.calls++;
+            if (reuse) clearCell(receiver);
+            ((void (*)(id,SEL))entry.original)(receiver, selector);
+            if (!reuse) refresh(receiver);
+        });
+        IMP original = NULL;
+        entry.result = QARInstallHook(cls, selector, "v16@0:8", entry.replacement, &original);
+        entry.original = original;
+        [actualCellHooks addObject:entry];
+        if (!original) imp_removeBlock(entry.replacement);
+    }
+}
 static BOOL ensureDelegate(UITableView *table) {
     if (!versionReady || !table.delegate) return NO;
     Class cls = object_getClass(table.delegate);
@@ -396,6 +432,12 @@ NSDictionary *QARBadgeStatus(void) {
         Method method = class_getInstanceMethod(objc_getClass(entry->cls), sel_registerName(entry->selector));
         active[key] = @(entry->original && method && method_getImplementation(method) == entry->replacement);
         if (entry->original) installed++;
+    }
+    for (QARCellHook *entry in actualCellHooks) {
+        NSString *key = [NSString stringWithFormat:@"%@ -%@", NSStringFromClass(entry.target), NSStringFromSelector(entry.selector)];
+        results[key] = @(entry.result); calls[key] = @(entry.calls);
+        active[key] = @(entry.original && class_getMethodImplementation(entry.target, entry.selector) == entry.replacement);
+        if (entry.original) installed++;
     }
     for (QARDelegateHook *entry in delegateHooks) {
         NSString *key = [NSStringFromClass(entry.target) stringByAppendingString:@" -tableView:heightForRowAtIndexPath:"];

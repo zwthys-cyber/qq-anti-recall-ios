@@ -275,6 +275,8 @@ static void testFlash(void) {
             [table reloadData];
             after(^{
                 UITableViewCell *restoredCell = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+                if (!QARBadgeViewForTest(restoredCell) || QARBadgeViewForTest(restoredCell).hidden)
+                    fprintf(stderr, "Synthetic badge state: %s\\n", [[QARBadgeStatus() description] UTF8String]);
                 check(QARBadgeViewForTest(restoredCell) && !QARBadgeViewForTest(restoredCell).hidden,
                     "badge returns after history reload from disk");
                 report(@"STEP: reuse and disk reload assertions passed");
