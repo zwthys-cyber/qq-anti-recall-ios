@@ -5,7 +5,7 @@
 static IMP factoryOriginal;
 static QARHookResult factoryResult = QARHookMissingClass;
 static NSMutableArray *appearHooks;
-static char footerKey, entryKey;
+static char footerKey, entryKey, controllerKey;
 @interface QARSettingsEntry : NSObject
 @property(nonatomic,weak) UIViewController *controller;
 - (void)open;
@@ -26,7 +26,7 @@ static UITableView *findTable(UIView *view, NSUInteger *count) {
     return nil;
 }
 static void attach(UIViewController *controller) {
-    if (!NSThread.isMainThread || ![controller isKindOfClass:UIViewController.class]) return;
+    if (!NSThread.isMainThread || ![controller isKindOfClass:UIViewController.class] || !objc_getAssociatedObject(controller, &controllerKey)) return;
     NSUInteger visited = 0; UITableView *table = findTable(controller.view, &visited); if (!table) return;
     if (objc_getAssociatedObject(table.tableFooterView, &footerKey)) return;
     UIView *previous = table.tableFooterView;
@@ -51,6 +51,7 @@ static void attach(UIViewController *controller) {
 static id createSettings(id receiver, SEL cmd) {
     id controller = ((id (*)(id, SEL))factoryOriginal)(receiver, cmd);
     if (![controller isKindOfClass:UIViewController.class] || !NSThread.isMainThread) return controller;
+    objc_setAssociatedObject(controller, &controllerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     Class cls = object_getClass(controller);
     if (!appearHooks) appearHooks = [NSMutableArray new];
     for (QARSettingsAppearHook *entry in appearHooks) if (entry.target == cls) return controller;

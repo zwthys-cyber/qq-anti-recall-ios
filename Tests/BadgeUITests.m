@@ -133,6 +133,9 @@ static void testSettings(void) {
     [controller viewDidAppear:NO];
     check(controller.tableView.tableFooterView == footer && footer.subviews.count == 2, "settings entry does not duplicate");
     check(![QARSettingsStatus()[@"floating_button"] boolValue], "settings integration has no floating button");
+    FixtureSettingsController *unrelated = [FixtureSettingsController new];
+    [unrelated loadViewIfNeeded]; [unrelated viewDidAppear:NO];
+    check(unrelated.tableView.tableFooterView == nil, "another instance of the same class does not gain a settings entry");
     settingsResult = nil;
     report(@"STEP: settings factory, in-menu entry, original footer and duplicate prevention passed");
 }
