@@ -7,7 +7,7 @@ permissions:
   actions: write
 jobs:
   dispatch:
-    if: ${{ false }} # Dispatch already accepted; one-shot trigger disabled.
+    if: github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -21,7 +21,7 @@ jobs:
             const r = await fetch('https://api.github.com/repos/' + process.env.GH_REPO + '/actions/workflows/card-claim-manual.yml/dispatches', {
               method: 'POST',
               headers: {'Authorization': 'Bearer ' + process.env.GH_TOKEN, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'},
-              body: JSON.stringify({ref: 'main', inputs: {mode: 'submit-once', confirm_submit: true}})
+              body: JSON.stringify({ref: 'main', inputs: {mode: 'submit-once', confirm_submit: true, verify_new_egress: true}})
             });
             console.log('DISPATCH_STATUS ' + r.status);
             if (r.status !== 204) process.exitCode = 1;
