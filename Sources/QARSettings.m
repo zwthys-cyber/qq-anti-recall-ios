@@ -1,11 +1,25 @@
 #import "QARSettings.h"
 #import "QARHook.h"
 #import "QARAdapter.h"
+#import "QARTheme.h"
 #import <objc/runtime.h>
 static IMP factoryOriginal;
 static QARHookResult factoryResult = QARHookMissingClass;
 static NSMutableArray *appearHooks;
 static char footerKey, entryKey, controllerKey;
+@interface QARSettingsButton : UIButton
+@property(nonatomic,weak) UIView *themeHost;
+- (void)refreshTheme;
+@end
+@implementation QARSettingsButton
+- (void)refreshTheme {
+    UITraitCollection *traits = [UITraitCollection traitCollectionWithUserInterfaceStyle:QARHostStyle(self.themeHost)];
+    self.backgroundColor = [UIColor.secondarySystemGroupedBackgroundColor resolvedColorWithTraitCollection:traits];
+    [self setTitleColor:[QARAccent() resolvedColorWithTraitCollection:traits] forState:UIControlStateNormal];
+}
+- (void)layoutSubviews { [super layoutSubviews]; [self refreshTheme]; }
+- (void)didMoveToWindow { [super didMoveToWindow]; [self refreshTheme]; }
+@end
 @interface QARSettingsEntry : NSObject
 @property(nonatomic,weak) UIViewController *controller;
 - (void)open;
@@ -28,7 +42,11 @@ static UITableView *findTable(UIView *view, NSUInteger *count) {
 static void attach(UIViewController *controller) {
     if (!NSThread.isMainThread || ![controller isKindOfClass:UIViewController.class] || !objc_getAssociatedObject(controller, &controllerKey)) return;
     NSUInteger visited = 0; UITableView *table = findTable(controller.view, &visited); if (!table) return;
-    if (objc_getAssociatedObject(table.tableFooterView, &footerKey)) return;
+    if (objc_getAssociatedObject(table.tableFooterView, &footerKey)) {
+        for (UIView *view in table.tableFooterView.subviews)
+            if ([view isKindOfClass:QARSettingsButton.class]) [(QARSettingsButton *)view refreshTheme];
+        return;
+    }
     UIView *previous = table.tableFooterView;
     CGFloat oldHeight = previous ? previous.frame.size.height : 0;
     // Detach through UITableView before reparenting; its setter removes the old footer.
@@ -36,7 +54,9 @@ static void attach(UIViewController *controller) {
     UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, table.bounds.size.width, oldHeight + 76)];
     footer.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     if (previous) { previous.frame = CGRectMake(0, 0, footer.bounds.size.width, oldHeight); [footer addSubview:previous]; }
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    QARSettingsButton *button = [QARSettingsButton buttonWithType:UIButtonTypeSystem];
+    button.themeHost = table;
+    button.accessibilityIdentifier = @"qar.settings.entry";
     button.frame = CGRectMake(16, oldHeight + 12, MAX(0, footer.bounds.size.width - 32), 48);
     button.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     button.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
@@ -47,6 +67,7 @@ static void attach(UIViewController *controller) {
     [button addTarget:entry action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
     [footer addSubview:button]; objc_setAssociatedObject(footer, &footerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     table.tableFooterView = footer;
+    [button refreshTheme];
 }
 static id createSettings(id receiver, SEL cmd) {
     id controller = ((id (*)(id, SEL))factoryOriginal)(receiver, cmd);

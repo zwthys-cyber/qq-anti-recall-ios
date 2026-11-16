@@ -4,6 +4,7 @@
 #import "QARBadge.h"
 #import "QARFlash.h"
 #import "QARSettings.h"
+#import "QARTheme.h"
 #import "QARDeviceDiagnostics.h"
 #import "QARDeviceName.h"
 #import <objc/message.h>
@@ -211,6 +212,17 @@ static void testSettings(void) {
         "plugin entry is inside settings and preserves previous footer");
     [controller viewDidAppear:NO];
     check(controller.tableView.tableFooterView == footer && footer.subviews.count == 2, "settings entry does not duplicate");
+    UIButton *entryButton = nil;
+    for (UIView *view in footer.subviews) if ([view isKindOfClass:UIButton.class]) entryButton = (UIButton *)view;
+    controller.tableView.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+    controller.tableView.backgroundColor = [UIColor colorWithWhite:0.06 alpha:1];
+    [entryButton setNeedsLayout]; [entryButton layoutIfNeeded];
+    check(QARSurfaceIsDark(entryButton.backgroundColor, entryButton.traitCollection),
+        "settings entry follows a dark QQ surface even when inherited traits are light");
+    controller.tableView.backgroundColor = UIColor.whiteColor;
+    [entryButton setNeedsLayout]; [entryButton layoutIfNeeded];
+    check(!QARSurfaceIsDark(entryButton.backgroundColor, entryButton.traitCollection),
+        "settings entry returns to light with a light host");
     check(![QARSettingsStatus()[@"floating_button"] boolValue], "settings integration has no floating button");
     FixtureSettingsController *unrelated = [FixtureSettingsController new];
     [unrelated loadViewIfNeeded]; [unrelated viewDidAppear:NO];
@@ -477,9 +489,16 @@ static void testFlash(void) {
         flash.on = originalFlash; [flash sendActionsForControlEvents:UIControlEventValueChanged];
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
         after(^{
+            [nav.view setNeedsLayout]; [nav.view layoutIfNeeded];
+            check(!QARSurfaceIsDark(nav.navigationBar.standardAppearance.backgroundColor, nav.traitCollection),
+                "plugin navigation uses explicit light appearance");
             [self savePreview:@"settings-light.png"];
             self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
             after(^{
+                [nav.view setNeedsLayout]; [nav.view layoutIfNeeded];
+                check(QARSurfaceIsDark(nav.navigationBar.standardAppearance.backgroundColor, nav.traitCollection) &&
+                    QARSurfaceIsDark(nav.navigationBar.scrollEdgeAppearance.backgroundColor, nav.traitCollection),
+                    "standard and scroll-edge navigation surfaces follow dark mode");
                 [self savePreview:@"settings-dark.png"];
                 NSUInteger savedBefore = QARFlashFiles().count;
                 [page tableView:page.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:1]];

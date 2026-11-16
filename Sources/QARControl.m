@@ -6,6 +6,7 @@
 #import "QARSettings.h"
 #import "QARDeviceDiagnostics.h"
 #import "QARDeviceName.h"
+#import "QARTheme.h"
 
 static NSDictionary *controlStatus(void) {
     NSMutableDictionary *status = [QARStatus() mutableCopy];
@@ -22,6 +23,35 @@ static NSDictionary *controlStatus(void) {
 }
 
 
+@interface QARSettingsNavigation : UINavigationController
+@property(nonatomic,weak) UIView *themeHost;
+@property(nonatomic) UIUserInterfaceStyle appliedStyle;
+- (void)refreshTheme;
+@end
+@implementation QARSettingsNavigation
+- (void)refreshTheme {
+    UIUserInterfaceStyle style = QARHostStyle(self.themeHost);
+    if (style == self.appliedStyle) return;
+    self.appliedStyle = style;
+    self.overrideUserInterfaceStyle = style;
+    UITraitCollection *traits = [UITraitCollection traitCollectionWithUserInterfaceStyle:style];
+    UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
+    [appearance configureWithOpaqueBackground];
+    appearance.backgroundColor = [UIColor.systemGroupedBackgroundColor resolvedColorWithTraitCollection:traits];
+    UIColor *label = [UIColor.labelColor resolvedColorWithTraitCollection:traits];
+    appearance.titleTextAttributes = @{NSForegroundColorAttributeName:label};
+    appearance.largeTitleTextAttributes = @{NSForegroundColorAttributeName:label};
+    self.navigationBar.standardAppearance = appearance;
+    self.navigationBar.scrollEdgeAppearance = appearance;
+    self.navigationBar.compactAppearance = appearance;
+    self.navigationBar.compactScrollEdgeAppearance = appearance;
+    self.navigationBar.tintColor = [QARAccent() resolvedColorWithTraitCollection:traits];
+    self.view.backgroundColor = appearance.backgroundColor;
+}
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self refreshTheme]; }
+- (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; [self refreshTheme]; }
+@end
+
 @interface QARPreferencesController : UITableViewController
 @property(nonatomic,strong) NSDictionary *snapshot;
 @end
@@ -32,7 +62,7 @@ static NSDictionary *controlStatus(void) {
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.tintColor = UIColor.systemTealColor;
+    self.view.tintColor = QARAccent();
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 60;
     self.tableView.accessibilityIdentifier = @"qar.settings";
@@ -72,7 +102,7 @@ static NSDictionary *controlStatus(void) {
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
     content.text = titles[path.section][path.row];
     content.image = [UIImage systemImageNamed:symbols[path.section][path.row]];
-    content.imageProperties.tintColor = path.section == 1 ? UIColor.secondaryLabelColor : UIColor.systemTealColor;
+    content.imageProperties.tintColor = path.section == 1 ? UIColor.secondaryLabelColor : QARAccent();
     content.textProperties.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     content.secondaryTextProperties.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
     content.secondaryTextProperties.color = UIColor.secondaryLabelColor;
@@ -81,7 +111,7 @@ static NSDictionary *controlStatus(void) {
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     if (path.section == 0 && path.row < 2) {
         UISwitch *toggle = [UISwitch new]; toggle.tag = path.row;
-        toggle.onTintColor = UIColor.systemTealColor;
+        toggle.onTintColor = QARAccent();
         toggle.on = path.row == 0 ? QAREnabled() : QARFlashEnabled();
         toggle.accessibilityLabel = content.text;
         toggle.accessibilityIdentifier = path.row == 0 ? @"qar.recall.toggle" : @"qar.flash.toggle";
@@ -149,7 +179,9 @@ static NSDictionary *controlStatus(void) {
 void QAROpenSettingsPanel(UIViewController *presenter) {
     if (!NSThread.isMainThread || !presenter || presenter.presentedViewController) return;
     QARPreferencesController *settings = [QARPreferencesController new];
-    UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:settings];
+    QARSettingsNavigation *navigation = [[QARSettingsNavigation alloc] initWithRootViewController:settings];
+    navigation.themeHost = presenter.view;
+    [navigation refreshTheme];
     navigation.navigationBar.prefersLargeTitles = YES;
     navigation.modalPresentationStyle = UIModalPresentationPageSheet;
     [presenter presentViewController:navigation animated:YES completion:nil];

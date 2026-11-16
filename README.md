@@ -2,7 +2,7 @@
 
 [![Build and test](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml/badge.svg)](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)
 
-面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看与自定义机型，设置入口位于 QQ 设置页。当前版本：**0.8.0-experimental**。
+面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看与自定义机型，设置入口位于 QQ 设置页。当前版本：**0.8.1-experimental**。
 
 [下载构建](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml) · [安装与使用](docs/installation.md) · [验证与故障排查](docs/validation.md) · [更新记录](CHANGELOG.md)
 
@@ -30,7 +30,7 @@
 ## 快速开始
 
 1. 打开 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)，选择对应版本、状态为成功的运行。
-2. 下载 `QQAntiRecall-0.8.0-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
+2. 下载 `QQAntiRecall-0.8.1-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
 3. 使用已有的注入、重签名流程替换旧插件，与匹配版本 QQ 一起签名安装。不要同时注入多个版本。
 4. 进入 **QQ 设置 → QQ 增强 · 插件设置**，调整所需功能。闪照保留默认关闭。
 
@@ -44,7 +44,7 @@
 - 撤回标识正常显示，闪照可从聊天消息下方重复打开。
 - **0.7.1 自定义机型收到成功回执，好友已看到填写的机型。**
 
-用户同时反馈 0.7.1 滑动仍有轻微卡顿。0.8.0 对重复布局与缓存读取进一步优化，实际流畅度仍需真机确认。新设置页也需要目标设备验证。详见 [验证矩阵](docs/validation.md)。
+用户随后确认 0.8.0 功能和流畅度已无问题。0.8.1 改用靛蓝设置配色，并修复 QQ 深色外观下的入口和导航栏颜色；主题修复仍需目标设备确认。详见 [验证矩阵](docs/validation.md)。
 
 诊断中的 `runtime_qq_verified`、`friend_visible_verified` 不会因安装 Hook 或收到成功响应而自动置为 true。用户实测反馈单独记录，不把某个账号的结果推广到所有账号。
 
