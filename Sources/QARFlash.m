@@ -12,7 +12,7 @@ static IMP original;
 static QARHookResult result = QARHookMissingClass;
 static dispatch_queue_t storage;
 static NSURL *root;
-static atomic_ullong calls, saved, failures, unsupported;
+static atomic_ullong calls, saved, failures, unsupported, recordLookups, recordMatches;
 BOOL QARFlashEnabled(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"QARFlashRetentionEnabled"]; }
 void QARSetFlashEnabled(BOOL enabled) {
     [NSUserDefaults.standardUserDefaults setBool:enabled forKey:@"QARFlashRetentionEnabled"];
@@ -155,6 +155,7 @@ NSDictionary *QARFlashStatus(void) {
         @"hook_active": @(original && class_getMethodImplementation(cls, NSSelectorFromString(@"decryptImageWithImagePath:")) == (IMP)decryptImage),
         @"decrypt_calls": @(atomic_load(&calls)), @"images_saved": @(atomic_load(&saved)),
         @"save_failures": @(atomic_load(&failures)), @"unsupported_results": @(atomic_load(&unsupported)),
+        @"chat_record_lookups": @(atomic_load(&recordLookups)), @"chat_record_matches": @(atomic_load(&recordMatches)),
         @"saved_images_current_account": @(QARFlashFiles().count), @"maximum_images": @100,
         @"maximum_bytes": @(128*1024*1024), @"uploads_images": @NO, @"runtime_verified": @NO};
 }
@@ -208,6 +209,7 @@ NSURL *QARFlashURLForRecord(id record) {
         if (![NSStringFromClass(object_getClass(pic)) isEqual:@"OCPicElement"]) continue;
         id flash = QARModelRead(pic, @"isFlashPic", NULL);
         if (![flash isKindOfClass:NSNumber.class] || ![flash boolValue]) continue;
+        atomic_fetch_add(&recordLookups, 1);
         NSMutableArray *paths = [NSMutableArray new];
         id source = QARModelRead(pic, @"sourcePath", NULL);
         if ([source isKindOfClass:NSString.class]) [paths addObject:source];
@@ -224,7 +226,7 @@ NSURL *QARFlashURLForRecord(id record) {
             }
         }
         NSURL *url = fileForPaths(paths, owner);
-        if (url && [owner isEqual:QARCurrentOwner()]) return url;
+        if (url && [owner isEqual:QARCurrentOwner()]) { atomic_fetch_add(&recordMatches, 1); return url; }
     }
     return nil;
 }

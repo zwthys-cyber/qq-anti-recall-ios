@@ -103,5 +103,7 @@ for name in ("badge-light.png", "badge-dark.png"):
     "xcode": run("xcodebuild", "-version", capture_output=True).stdout.strip(),
     "checks": ["opaque_view_model", "false_bind_result", "actual_delegate_height",
                "unrelated_table_unchanged", "no_height_query_recursion", "footer_geometry", "normal_row", "reuse", "history_disk_restore",
-               "dark_mode_render", "disabled", "account_switch"],
+               "dark_mode_render", "disabled", "account_switch", "settings_footer_preserved",
+               "chat_flash_replay_twice", "flash_switch_independent", "flash_message_path_isolation",
+               "flash_source_deleted", "flash_disable_closes_preview"],
 }, indent=2) + "\n")

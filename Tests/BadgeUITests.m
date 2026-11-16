@@ -57,7 +57,7 @@ static void check(BOOL condition, const char *why) {
 }
 - (_Bool)bindViewModel:(FixtureModel *)model {
     self.model = model; self.avatar.record = model.payload;
-    self.body.text = [@"  " stringByAppendingString:QARFixtureBody(model.payload) ?: @""];
+    self.body.text = [@"  " stringByAppendingString:QARFixtureBody(model.payload) ?: (QARFlashURLForRecord(model.payload) ? @"闪照（合成测试图片）" : @"")];
     [self setNeedsLayout]; return NO; // False does not imply the visible avatar failed to bind.
 }
 - (void)unbindViewModel { self.model = nil; self.avatar.record = nil; self.body.text = nil; }
@@ -295,7 +295,7 @@ static void testFlash(void) {
                                 QARSetFlashEnabled(NO);
                                 after(^{
                                     check(self.controller.presentedViewController == nil, "turning off flash retention closes replay");
-                                    report(@"PASS: UIKit message footers, chat flash replay twice, independent switch, settings entry, reuse, history and account isolation");
+                                    report(@"PASS: UIKit footer geometry, chat flash replay twice, independent switch, settings entry, reuse, history and account isolation");
                                     fflush(stdout); exit(0);
                                 });
                             });
