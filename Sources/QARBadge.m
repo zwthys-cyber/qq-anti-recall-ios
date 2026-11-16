@@ -78,6 +78,7 @@
 @property(nonatomic) CGFloat baseHeight;
 @property(nonatomic) NSUInteger attempts;
 @property(nonatomic) BOOL reportedUnavailable;
+@property(nonatomic) CGRect bubbleFrame;
 @end
 @implementation QARBadgeCellState @end
 @interface QARBadgeTableState : NSObject
@@ -173,6 +174,28 @@ static CGFloat footerHeight(void) {
         scaledFontForFont:[UIFont systemFontOfSize:11 weight:UIFontWeightMedium]];
     return ceil(font.lineHeight) + 14;
 }
+static UIView *findBubble(UIView *view, NSUInteger *visited) {
+    if (++*visited > 256 || view.hidden || view.alpha < 0.01) return nil;
+    Class bubble = NSClassFromString(@"_TtC6AIOLib13AIOBubbleView");
+    if (bubble && [view isKindOfClass:bubble]) return view;
+    for (UIView *child in view.subviews) { UIView *found = findBubble(child, visited); if (found) return found; }
+    return nil;
+}
+static BOOL usableBubble(QARBadgeCellState *state, CGFloat base) {
+    CGRect box = state.bubbleFrame;
+    return !CGRectIsEmpty(box) && isfinite(CGRectGetMaxY(box)) && box.origin.y >= 0 &&
+        CGRectGetMaxY(box) <= base + 0.5;
+}
+static CGFloat pillHeight(QARBadgeCellState *state) {
+    return state.flash ? MAX(38, footerHeight() - 8) : footerHeight() - 8;
+}
+static CGFloat pillTop(QARBadgeCellState *state, CGFloat base) {
+    return usableBubble(state, base) ? CGRectGetMaxY(state.bubbleFrame) + 4 : base + 3;
+}
+static CGFloat extraForState(QARBadgeCellState *state, CGFloat base) {
+    if (!state.marked && !state.flash) return 0;
+    return MAX(0, ceil(pillTop(state, base) + pillHeight(state) + 4 - base));
+}
 static void refresh(UITableViewCell *cell);
 static void removeRow(QARBadgeCellState *state, UITableViewCell *cell) {
     QARBadgeTableState *tableState = state.table ? objc_getAssociatedObject(state.table, &tableKey) : nil;
@@ -204,7 +227,7 @@ static double delegateHeight(QARDelegateHook *entry, id receiver, UITableView *t
     BOOL sameOwner = state.record && [state.owner isEqual:QARCurrentOwner()];
     BOOL marked = sameOwner && state.marked && QAREnabled();
     BOOL flash = sameOwner && state.flash && QARFlashEnabled();
-    CGFloat extra = flash ? MAX(44, footerHeight()) : (marked ? footerHeight() : 0);
+    CGFloat extra = (flash || marked) ? extraForState(state, original) : 0;
     state.baseHeight = original; state.reserved = extra;
     if (extra) atomic_fetch_add(&reservedRows, 1);
     return original + extra;
@@ -304,7 +327,7 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
     for (UITableViewCell *cell in table.visibleCells) {
         QARBadgeCellState *state = objc_getAssociatedObject(cell, &stateKey);
         if (!state) continue;
-        CGFloat needed = state.flash ? MAX(44, footerHeight()) : (state.marked ? footerHeight() : 0);
+        CGFloat needed = extraForState(state, state.baseHeight);
         if (fabs(state.reserved - needed) > 0.5 ||
             (needed > 0 && cell.bounds.size.height < state.baseHeight + needed - 1)) state.attempts++;
     }
@@ -318,6 +341,15 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
         atomic_fetch_add(&heightChanges, 1);
     } @finally { current.pending = NO; }
     for (UITableViewCell *cell in table.visibleCells) refresh(cell);
+    if (followBottom) {
+        __weak UITableView *weakTable = table;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UITableView *currentTable = weakTable;
+            if (!currentTable.window || userScrolling(currentTable)) return;
+            [currentTable layoutIfNeeded];
+            [currentTable setContentOffset:CGPointMake(currentTable.contentOffset.x, bottomOffset(currentTable)) animated:NO];
+        });
+    }
 }
 static void requestHeight(UITableView *table) {
     QARBadgeTableState *tableState = table ? objc_getAssociatedObject(table, &tableKey) : nil;
@@ -337,6 +369,9 @@ static void refresh(UITableViewCell *cell) {
         clearCell(cell); state = stateFor(cell);
     }
     state.record = record; state.owner = owner;
+    NSUInteger bubbleVisited = 0;
+    UIView *bubble = findBubble(cell.contentView, &bubbleVisited);
+    state.bubbleFrame = bubble ? [bubble convertRect:bubble.bounds toView:cell.contentView] : CGRectZero;
     BOOL marked = record && QARIsMarkedRecord(record);
     BOOL flash = record && QARFlashURLForRecord(record) != nil;
     if (state.marked != marked || state.flash != flash) { state.attempts = 0; state.reportedUnavailable = NO; }
@@ -363,8 +398,8 @@ static void refresh(UITableViewCell *cell) {
         if (state.reserved > 0 && table.window && state.attempts < 3) requestHeight(table);
         return;
     }
-    CGFloat extra = state.flash ? MAX(44, footerHeight()) : footerHeight();
-    if (state.reserved < extra - 0.5 || cell.bounds.size.height < state.baseHeight + extra - 1) {
+    CGFloat extra = extraForState(state, state.baseHeight);
+    if (fabs(state.reserved - extra) > 0.5 || cell.bounds.size.height < state.baseHeight + extra - 1) {
         state.pill.hidden = YES;
         if (table.window && state.path && state.attempts < 3) requestHeight(table);
         else if (table.window && state.attempts >= 3 && !state.reportedUnavailable) { state.reportedUnavailable = YES; atomic_fetch_add(&unresolved, 1); }
@@ -386,8 +421,9 @@ static void refresh(UITableViewCell *cell) {
     CGSize size = [state.pill sizeThatFits:CGSizeMake(MAX(0, width - 32), CGFLOAT_MAX)];
     size.width = MIN(size.width, MAX(0, width - 32));
     if (state.flash) size.height = MAX(38, size.height);
-    CGFloat x = MIN(56, MAX(16, width - size.width - 16));
-    state.pill.frame = CGRectMake(x, cell.contentView.bounds.size.height - extra + 3, size.width, size.height);
+    CGFloat desiredX = usableBubble(state, state.baseHeight) ? CGRectGetMinX(state.bubbleFrame) : 56;
+    CGFloat x = MIN(desiredX, MAX(16, width - size.width - 16));
+    state.pill.frame = CGRectMake(x, pillTop(state, state.baseHeight), size.width, size.height);
     state.pill.hidden = NO; [cell.contentView bringSubviewToFront:state.pill];
 }
 static void attachmentRefresh(id object) {

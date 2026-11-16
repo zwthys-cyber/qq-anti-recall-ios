@@ -11,6 +11,7 @@
 #import "QARAdapter.h"
 #import "ModelFixtures.h"
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 
 static void report(NSString *text) {
@@ -48,7 +49,7 @@ static void check(BOOL condition, const char *why) {
     self.avatar = [NSClassFromString(@"QQNTAIOMessageAvatarView") new];
     self.avatar.backgroundColor = UIColor.systemTealColor;
     self.avatar.layer.cornerRadius = 18;
-    self.body = [UILabel new];
+    self.body = [NSClassFromString(@"_TtC6AIOLib13AIOBubbleView") new];
     self.body.font = [UIFont systemFontOfSize:16];
     self.body.numberOfLines = 2;
     self.body.backgroundColor = UIColor.secondarySystemBackgroundColor;
@@ -256,6 +257,7 @@ static void testFlash(void) {
     check([publicAssets isEqual:@[@"https://imgcache.qq.com/app/device.js",
         @"https://qzonestyle.gtimg.cn/assets/device-v2.js"]], "device diagnostics reject credentials and unrelated hosts, strip query/fragment and deduplicate");
     check(![QARDeviceDiagnosticsStatus()[@"submission_implemented"] boolValue], "unimplemented server submission is never reported as working");
+    registerFixture(UILabel.class, "_TtC6AIOLib13AIOBubbleView");
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");
     registerFixture(FixtureModel.class, "AIOBaseCellViewModel");
@@ -289,6 +291,7 @@ static void testFlash(void) {
         check([QARBadgeStatus()[@"deferred_height_updates"] unsignedIntegerValue] > 0, "busy QQ updates defer footer work without exhausting attempts");
         check(CGRectGetMinY(pill.frame) >= CGRectGetMaxY(cell.body.frame) &&
               CGRectGetMaxY(pill.frame) <= cell.contentView.bounds.size.height, "badge is below the body and inside its own row");
+        check(fabs(CGRectGetMinY(pill.frame) - CGRectGetMaxY(cell.body.frame) - 4) <= 1, "badge sits four points below its message bubble");
         UITableViewCell *second = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
         check(!QARBadgeViewForTest(second) || QARBadgeViewForTest(second).hidden, "normal row has no recall badge");
         check([QARBadgeStatus()[@"rows_with_footer_reserved"] unsignedIntegerValue] > 0 &&
@@ -361,11 +364,16 @@ static void testFlash(void) {
     self.controller.models = models; [table reloadData]; [table layoutIfNeeded];
     [table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:35 inSection:0] atScrollPosition:UITableViewScrollPositionBottom animated:NO];
     after(^{
+        [table setContentOffset:CGPointMake(0, MAX(-table.adjustedContentInset.top,
+            table.contentSize.height + table.adjustedContentInset.bottom - table.bounds.size.height)) animated:NO];
         QARMarkRecalledUpdates(@[QARFixtureMessage(1035, 1035, @"scroll-fixture", 1700000000, nil)]);
         after(^{
             CGFloat visibleBottom = table.contentOffset.y + table.bounds.size.height - table.adjustedContentInset.bottom;
             CGRect lastRow = [table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:35 inSection:0]];
-            check(CGRectGetMaxY(lastRow) <= visibleBottom + 2, "latest message footer remains above the composer after height growth");
+            if (CGRectGetMaxY(lastRow) > visibleBottom + 2) {
+                report([NSString stringWithFormat:@"FAIL: bottom following geometry row=%g visible=%g offset=%g content=%g inset=%g",
+                    CGRectGetMaxY(lastRow), visibleBottom, table.contentOffset.y, table.contentSize.height, table.adjustedContentInset.bottom]); exit(1);
+            }
             [table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:12 inSection:0] atScrollPosition:UITableViewScrollPositionTop animated:NO];
             after(^{
                 QARMarkRecalledUpdates(@[QARFixtureMessage(1012, 1012, @"scroll-fixture", 1700000000, nil)]);
