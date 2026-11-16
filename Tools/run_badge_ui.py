@@ -45,7 +45,7 @@ sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path", capture_output
 arch = platform.machine()
 sources = [
     "QARHook", "QARAdapter", "QARTrace", "QARIncoming", "QARUpdateFilter",
-    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge", "QARFlash", "QARSettings", "QARDeviceDiagnostics", "QARControl",
+    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge", "QARFlash", "QARSettings", "QARDeviceDiagnostics", "QARDeviceName", "QARControl",
 ]
 run("xcrun", "clang", "-target", f"{arch}-apple-ios15.0-simulator", "-isysroot", sdk,
     "-fobjc-arc", "-DQAR_TESTING", "-Wall", "-Wextra", "-Werror", "-I", "Sources", "-I", "Tests",
@@ -105,5 +105,5 @@ for name in ("badge-light.png", "badge-dark.png"):
                "unrelated_table_unchanged", "no_height_query_recursion", "footer_geometry", "normal_row", "reuse", "history_disk_restore",
                "dark_mode_render", "disabled", "account_switch", "settings_footer_preserved",
                "chat_flash_replay_twice", "flash_switch_independent", "flash_message_path_isolation",
-               "flash_source_deleted", "flash_disable_closes_preview", "busy_table_burst_layouts", "bottom_follows_footer_growth", "history_not_forced_to_bottom"],
+               "flash_source_deleted", "flash_disable_closes_preview", "busy_table_burst_layouts", "bottom_follows_footer_growth", "history_not_forced_to_bottom", "device_name_xhr_fetch_adapter", "device_name_account_gate", "device_name_response_codes", "device_name_receipt_privacy"],
 }, indent=2) + "\n")

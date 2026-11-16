@@ -5,6 +5,7 @@
 #import "QARFlash.h"
 #import "QARSettings.h"
 #import "QARDeviceDiagnostics.h"
+#import "QARDeviceName.h"
 #import <objc/message.h>
 #import "QARSnapshot.h"
 #import "QARStore.h"
@@ -136,6 +137,53 @@ static void testDeviceCollector(void) {
         "diagnostics omit request tokens and API resource paths");
     report(@"STEP: device collector dynamic resources, same-origin frames, module assets and privacy passed");
 }
+static void testDeviceNameAdapter(void) {
+    JSContext *context = [JSContext new];
+    [context evaluateScript:
+        @"var window=this;var location={protocol:'https:',hostname:'club.vip.qq.com',pathname:'/onlinestatus/set',origin:'https://club.vip.qq.com'};"
+        "var document={body:null};var posted=[];var webkit={messageHandlers:{QARDeviceNameReceipt:{postMessage:x=>posted.push(x)}}};"
+        "var defer=false;function XMLHttpRequest(){this.responseType='json';this.response={ret:0,data:{rsp:{iRet:0}}};this.status=200;this.listeners=[];}"
+        "XMLHttpRequest.prototype.open=function(method,url){this.method=method;this.url=url;};"
+        "XMLHttpRequest.prototype.addEventListener=function(name,fn){this.listeners.push(fn);};"
+        "XMLHttpRequest.prototype.send=function(body){this.sent=body;if(!defer)this.listeners.splice(0).forEach(fn=>fn());};"
+        "var fetchSeen,fetchReply={status:200,clone:()=>({json:()=>({then:ok=>ok({ret:0,data:{rsp:{iRet:0}}})})})};"
+        "var fetch=function(input,init){fetchSeen={input:input,init:init};return {then:fn=>fn(fetchReply)};};"];
+    NSString *name = @"我的设备 🌈 \"quoted\"";
+    [context evaluateScript:QARDeviceNameScript(@{@"uin":@"10001", @"text":name})];
+    NSDictionary *arg = @{@"lUin":@10001, @"sModel":@"iPhone", @"sModelShow":@"iPhone", @"sIMei":@"synthetic-device",
+        @"iAppType":@1, @"sDesc":@"existing description", @"sVer":@"9.3.86", @"bShowInfo":@YES};
+    NSDictionary *payload = @{@"servicesName":@"VIP.CustomOnlineStatusServer.CustomOnlineStatusObj", @"cmd":@"SetCustomOnlineStatus", @"args":@[arg]};
+    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
+    context[@"fixtureBody"] = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    NSDictionary *changed = [[context evaluateScript:
+        @"var first=new XMLHttpRequest();first.open('POST','/srf-cgi-node?srfname=fixture');first.send(fixtureBody);JSON.parse(first.sent).args[0]"] toDictionary];
+    check(context.exception == nil && [changed[@"sModelShow"] isEqual:name], "device adapter supports arbitrary Unicode and quotes");
+    NSMutableDictionary *preserved = [changed mutableCopy]; preserved[@"sModelShow"] = @"iPhone";
+    check([preserved isEqual:arg], "device adapter preserves account, device binding, version, description and all other fields");
+    check([[context evaluateScript:@"posted[posted.length-1].last_result"] toInt32] == 1, "both server success codes are required for acceptance");
+    [context evaluateScript:
+        @"var denied=new XMLHttpRequest();denied.response={ret:0,data:{rsp:{iRet:9}}};denied.open('POST','/srf-cgi-node');denied.send(fixtureBody);"];
+    check([[context evaluateScript:@"posted[posted.length-1].last_result"] toInt32] == -1, "server rejection is never reported as success");
+    BOOL isolated = [[context evaluateScript:
+        @"var other=JSON.parse(fixtureBody);other.args[0].lUin=20002;var otherBody=JSON.stringify(other);var mismatch=new XMLHttpRequest();mismatch.open('POST','/srf-cgi-node');mismatch.send(otherBody);mismatch.sent===otherBody"] toBool];
+    check(isolated, "device adapter refuses another account");
+    BOOL unrelated = [[context evaluateScript:
+        @"var foreign=new XMLHttpRequest();foreign.open('POST','https://club.vip.qq.com.evil.invalid/srf-cgi-node');foreign.send(fixtureBody);foreign.sent===fixtureBody"] toBool];
+    check(unrelated, "device adapter leaves unrelated hosts unchanged");
+    BOOL fetchOK = [[context evaluateScript:
+        @"var init=Object.freeze({method:'POST',credentials:'include',body:fixtureBody,headers:{'Content-Type':'application/json'}});"
+        "var answer=fetch('/srf-cgi-node',init);answer===fetchReply&&fetchSeen.init.credentials===init.credentials&&fetchSeen.init.headers===init.headers&&init.body===fixtureBody"] toBool];
+    check(fetchOK && [[[context evaluateScript:@"JSON.parse(fetchSeen.init.body).args[0].sModelShow"] toString] isEqual:name],
+        "fetch adapter preserves original options and response without mutating input");
+    [context evaluateScript:@"defer=true;var stale=new XMLHttpRequest();stale.open('POST','/srf-cgi-node');stale.send(fixtureBody);"];
+    [context evaluateScript:QARDeviceNameScript(@{@"uin":@"10001", @"text":@"新的设备名"})];
+    check([[context evaluateScript:@"var before=posted.length;stale.listeners.forEach(fn=>fn());posted.length===before"] toBool],
+        "a response for an old configured name cannot confirm the new name");
+    NSString *exported = [[context evaluateScript:@"JSON.stringify(posted)"] toString];
+    check(![exported containsString:@"10001"] && ![exported containsString:@"synthetic-device"] &&
+        ![exported containsString:@"我的设备"] && context.exception == nil, "device receipt bridge contains no account, name or request fields");
+    report(@"STEP: device-name XHR/fetch adapter, Unicode, account isolation, response validation and privacy passed");
+}
 static UIViewController *settingsResult;
 static id settingsFactory(id receiver, SEL cmd) { (void)receiver; (void)cmd; return settingsResult; }
 @interface FixtureSettingsController : UITableViewController @end
@@ -246,7 +294,7 @@ static void testFlash(void) {
     check([scene isKindOfClass:UIWindowScene.class], "UIKit window scene");
     report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
-    testFlash(); testSettings(); testDeviceCollector();
+    testFlash(); testSettings(); testDeviceCollector(); testDeviceNameAdapter();
     NSArray *publicAssets = QARDevicePublicAssets(@[
         @"https://imgcache.qq.com/app/device.js?token=private-fixture#secret",
         @"https://imgcache.qq.com/app/device.js?uin=private-fixture",
@@ -256,7 +304,7 @@ static void testFlash(void) {
         @"https://qzonestyle.gtimg.cn/assets/device-v2.js", @123]);
     check([publicAssets isEqual:@[@"https://imgcache.qq.com/app/device.js",
         @"https://qzonestyle.gtimg.cn/assets/device-v2.js"]], "device diagnostics reject credentials and unrelated hosts, strip query/fragment and deduplicate");
-    check(![QARDeviceDiagnosticsStatus()[@"submission_implemented"] boolValue], "unimplemented server submission is never reported as working");
+    check(![QARDeviceDiagnosticsStatus()[@"friend_visible_verified"] boolValue], "friend-visible verification is never inferred from installing an adapter");
     registerFixture(UILabel.class, "_TtC6AIOLib13AIOBubbleView");
     registerFixture(FixtureAvatar.class, "QQNTAIOMessageAvatarView");
     registerFixture(FixtureCell.class, "_TtC6AIOLib7AIOCell");

@@ -1,6 +1,7 @@
 #import "QARDeviceDiagnostics.h"
 #import "QARAdapter.h"
 #import "QARHook.h"
+#import "QARDeviceName.h"
 #import <WebKit/WebKit.h>
 #include <stdatomic.h>
 static IMP original;
@@ -60,14 +61,16 @@ void QARDeviceRecordObservation(id value) {
     }
 }
 static id loadRequest(WKWebView *view, SEL cmd, NSURLRequest *request) {
+    if (NSThread.isMainThread && devicePage(request.URL)) QARPrepareDeviceNamePage(view);
     id navigation = ((id (*)(id, SEL, id))original)(view, cmd, request);
     if (!NSThread.isMainThread || !devicePage(request.URL)) return navigation;
     atomic_fetch_add(&pageLoads, 1);
     __weak WKWebView *weakView = view;
-    for (NSNumber *delay in @[@2, @5, @10]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay.longLongValue * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    for (NSNumber *delay in @[@0.25, @2, @5, @10]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             WKWebView *strongView = weakView;
             if (!strongView || !devicePage(strongView.URL)) return;
+            QARApplyDeviceNamePage(strongView);
             [strongView evaluateJavaScript:QARDeviceDiagnosticScript()
                 completionHandler:^(id values, NSError *error) {
                     if (!devicePage(weakView.URL)) return;
@@ -83,7 +86,7 @@ void QARInstallDeviceDiagnostics(NSDictionary *info) {
     result = QARInstallHook(WKWebView.class, @selector(loadRequest:), "@24@0:8@16", (IMP)loadRequest, &original);
 }
 NSDictionary *QARDeviceDiagnosticsStatus(void) {
-    return @{@"submission_implemented": @NO, @"friend_visible_verified": @NO,
+    return @{@"submission_implemented": @YES, @"submission": QARDeviceNameStatus(), @"friend_visible_verified": @NO,
         @"page_loads": @(atomic_load(&pageLoads)), @"page_observations": @(atomic_load(&observations)),
         @"collector_version": @2, @"last_scan_counts": scanCounts ?: @{},
         @"evaluation_errors": @(atomic_load(&evaluationErrors)), @"public_script_assets": assets ?: @[], @"hook_result": @(result),

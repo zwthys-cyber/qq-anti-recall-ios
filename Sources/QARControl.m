@@ -5,6 +5,7 @@
 #import "QARFlash.h"
 #import "QARSettings.h"
 #import "QARDeviceDiagnostics.h"
+#import "QARDeviceName.h"
 
 static NSDictionary *controlStatus(void) {
     NSMutableDictionary *status = [QARStatus() mutableCopy];
@@ -59,6 +60,10 @@ static NSDictionary *controlStatus(void) {
         }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清除当前账号的闪照" style:UIAlertActionStyleDestructive
         handler:^(__unused UIAlertAction *action) { QARClearFlash(); }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"自定义设备名" style:UIAlertActionStyleDefault
+        handler:^(__unused UIAlertAction *action) {
+            dispatch_async(dispatch_get_main_queue(), ^{ QARPresentDeviceNameEditor([self presenter]); });
+        }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清零并开始测试" style:UIAlertActionStyleDefault
         handler:^(__unused UIAlertAction *action) { QARResetDiagnostics(); QARResetBadgeCounters(); }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"清除当前账号的消息备份" style:UIAlertActionStyleDestructive
