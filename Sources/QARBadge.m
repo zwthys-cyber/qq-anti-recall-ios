@@ -5,7 +5,6 @@
 #import "QARStore.h"
 #import "QARFlash.h"
 #import <UIKit/UIKit.h>
-#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -382,7 +381,7 @@ static void refresh(UITableViewCell *cell) {
     // flash lookup otherwise synchronously visits the storage queue and filesystem.
     // Store/switch notifications invalidate immediately; the short expiry also covers
     // QQ mutating a record in place without rebinding it.
-    CFTimeInterval now = CACurrentMediaTime();
+    CFTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     BOOL marked = state.marked, flash = state.flash;
     if (state.contentEpoch != contentEpoch || now - state.contentCheckedAt >= 0.5) {
         marked = record && QARIsMarkedRecord(record);

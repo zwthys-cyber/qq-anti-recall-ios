@@ -170,6 +170,10 @@ static void testDeviceNameAdapter(void) {
     BOOL unrelated = [[context evaluateScript:
         @"var foreign=new XMLHttpRequest();foreign.open('POST','https://club.vip.qq.com.evil.invalid/srf-cgi-node');foreign.send(fixtureBody);foreign.sent===fixtureBody"] toBool];
     check(unrelated, "device adapter leaves unrelated hosts unchanged");
+    check([[context evaluateScript:
+        @"var missing=JSON.parse(fixtureBody);delete missing.args[0].sDesc;var missingBody=JSON.stringify(missing);"
+        "var unsupported=new XMLHttpRequest();unsupported.open('POST','/srf-cgi-node');unsupported.send(missingBody);unsupported.sent===missingBody"] toBool],
+        "unknown custom-text schema passes through without changing the selected model");
     BOOL fetchOK = [[context evaluateScript:
         @"var init=Object.freeze({method:'POST',credentials:'include',body:fixtureBody,headers:{'Content-Type':'application/json'}});"
         "var answer=fetch('/srf-cgi-node',init);answer===fetchReply&&fetchSeen.init.credentials===init.credentials&&fetchSeen.init.headers===init.headers&&init.body===fixtureBody"] toBool];
