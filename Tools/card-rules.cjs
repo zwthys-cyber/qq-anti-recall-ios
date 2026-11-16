@@ -52,7 +52,7 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
  assets.add(confirmURL);
  const confirmResponse=await c.request.get(confirmURL,{timeout:20000});
  const confirmSource=await confirmResponse.text();
- for(const m of confirmSource.matchAll(/["'](\\.\\/[^"' ]+\\.js)["']/g))assets.add(new URL(m[1],confirmURL).href);
+ for(const name of confirmSource.split('"'))if(name.startsWith('./')&&name.endsWith('.js'))assets.add(new URL(name,confirmURL).href);
  for(const url of [...assets].filter(u=>new URL(u).pathname.startsWith('/static/')).slice(0,70)){
   const r=await c.request.get(url,{timeout:20000});const source=await r.text();
   if(/OrderConfirmView-/.test(url))console.log('CONFIRM_IMPORTS '+JSON.stringify(source.slice(0,3500)));
