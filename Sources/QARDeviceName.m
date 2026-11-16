@@ -97,11 +97,11 @@ NSDictionary *QARDeviceNameStatus(void) {
 void QARPresentDeviceNameEditor(UIViewController *presenter) {
     if (!presenter || !NSThread.isMainThread) return;
     NSString *owner = QARCurrentOwner(); if (!owner) return;
-    UIAlertController *editor = [UIAlertController alertControllerWithTitle:@"自定义机型（实验）"
-        message:@"替换机型本身，保留官方自定义文字。此方案尚未验证服务端接受。填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
+    UIAlertController *editor = [UIAlertController alertControllerWithTitle:@"自定义机型"
+        message:@"替换机型本身，保留官方自定义文字。填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
         preferredStyle:UIAlertControllerStyleAlert];
     [editor addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.text = customName(); field.placeholder = @"输入想显示的设备名";
+        field.text = customName(); field.placeholder = @"输入想显示的机型";
         field.clearButtonMode = UITextFieldViewModeWhileEditing;
     }];
     QARDeviceInputLimit *inputLimit = [QARDeviceInputLimit new];

@@ -92,7 +92,7 @@ if not result.startswith("PASS: UIKit footer geometry"):
     raise RuntimeError("UIKit fixture did not pass: " + (result or "no executable progress file"))
 destination = pathlib.Path("dist")
 destination.mkdir(exist_ok=True)
-for name in ("badge-light.png", "badge-dark.png"):
+for name in ("badge-light.png", "badge-dark.png", "settings-light.png", "settings-dark.png", "settings-large-text.png"):
     shutil.copy2(container / "Documents" / name, destination / name)
     # Synthetic fixture pixels only, for review without running local repository tools.
     print("QAR_BADGE_PREVIEW " + name + " " + base64.b64encode((destination / name).read_bytes()).decode(), flush=True)
@@ -105,5 +105,5 @@ for name in ("badge-light.png", "badge-dark.png"):
                "unrelated_table_unchanged", "no_height_query_recursion", "footer_geometry", "normal_row", "reuse", "history_disk_restore",
                "dark_mode_render", "disabled", "account_switch", "settings_footer_preserved",
                "chat_flash_replay_twice", "flash_switch_independent", "flash_message_path_isolation",
-               "flash_source_deleted", "flash_disable_closes_preview", "busy_table_burst_layouts", "bottom_follows_footer_growth", "history_not_forced_to_bottom", "device_name_xhr_fetch_adapter", "device_name_account_gate", "device_name_response_codes", "device_name_receipt_privacy"],
+               "flash_source_deleted", "flash_disable_closes_preview", "busy_table_burst_layouts", "bottom_follows_footer_growth", "history_not_forced_to_bottom", "device_name_xhr_fetch_adapter", "device_name_account_gate", "device_name_response_codes", "device_name_receipt_privacy", "settings_native_switch_isolation", "settings_delete_confirmation", "settings_large_text", "stable_layout_cache"],
 }, indent=2) + "\n")

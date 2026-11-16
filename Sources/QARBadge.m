@@ -79,6 +79,9 @@
 @property(nonatomic) NSUInteger attempts;
 @property(nonatomic) BOOL reportedUnavailable;
 @property(nonatomic) CGRect bubbleFrame;
+@property(nonatomic,weak) UIView *avatarView;
+@property(nonatomic,weak) UIView *bubbleView;
+@property(nonatomic) BOOL refreshPending;
 @property(nonatomic) NSUInteger contentEpoch;
 @property(nonatomic) CFTimeInterval contentCheckedAt;
 @end
@@ -117,7 +120,7 @@ static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
 static BOOL versionReady;
 static NSUInteger contentEpoch = 1;
-static atomic_uint_fast64_t contentChecks, contentCacheHits;
+static atomic_uint_fast64_t contentChecks, contentCacheHits, coalescedLayouts, hierarchyScans;
 static _Thread_local unsigned heightDepth;
 static atomic_uint_fast64_t noTable, detachedTable, rejectedOrigin, deferredHeightUpdates;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges, recordsFound, missingPath;
@@ -164,13 +167,12 @@ static QARBadgeCellState *stateFor(UITableViewCell *cell) {
     }
     return state;
 }
-static id findRecord(UIView *view, unsigned *visited) {
+static UIView *findAvatar(UIView *view, unsigned *visited) {
     if (++*visited > 256) return nil;
     if ([view isKindOfClass:NSClassFromString(@"QQNTAIOMessageAvatarView")]) {
-        id record = QARBadgeRecord(view);
-        if (record) return record;
+        return view;
     }
-    for (UIView *child in view.subviews) { id record = findRecord(child, visited); if (record) return record; }
+    for (UIView *child in view.subviews) { UIView *avatar = findAvatar(child, visited); if (avatar) return avatar; }
     return nil;
 }
 static CGFloat footerHeight(void) {
@@ -201,6 +203,19 @@ static CGFloat extraForState(QARBadgeCellState *state, CGFloat base) {
     return MAX(0, ceil(pillTop(state, base) + pillHeight(state) + 4 - base));
 }
 static void refresh(UITableViewCell *cell);
+static void scheduleRefresh(UITableViewCell *cell) {
+    if (!cell || !NSThread.isMainThread) return;
+    QARBadgeCellState *state = stateFor(cell);
+    if (state.refreshPending) { atomic_fetch_add(&coalescedLayouts, 1); return; }
+    state.refreshPending = YES;
+    __weak UITableViewCell *weakCell = cell;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UITableViewCell *current = weakCell;
+        QARBadgeCellState *currentState = current ? objc_getAssociatedObject(current, &stateKey) : nil;
+        currentState.refreshPending = NO;
+        if (current.window) refresh(current);
+    });
+}
 static void removeRow(QARBadgeCellState *state, UITableViewCell *cell) {
     QARBadgeTableState *tableState = state.table ? objc_getAssociatedObject(state.table, &tableKey) : nil;
     if (state.path && [tableState.rows objectForKey:state.path] == cell) [tableState.rows removeObjectForKey:state.path];
@@ -267,7 +282,7 @@ static void ensureActualCell(UITableViewCell *cell) {
             entry.calls++;
             if (reuse) clearCell(receiver);
             ((void (*)(id,SEL))entry.original)(receiver, selector);
-            if (!reuse) refresh(receiver);
+            if (!reuse) scheduleRefresh(receiver);
         });
         IMP original = NULL;
         entry.result = QARInstallHook(cls, selector, "v16@0:8", entry.replacement, &original);
@@ -316,7 +331,7 @@ static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
     QARBadgeTableState *current = table ? objc_getAssociatedObject(table, &tableKey) : nil;
     if (!current) return;
     if (!table.window) { current.pending = NO; return; }
-    if (table.hasUncommittedUpdates) {
+    if (table.hasUncommittedUpdates || userScrolling(table)) {
         atomic_fetch_add(&deferredHeightUpdates, 1);
         if (deferrals >= 20) { current.pending = NO; return; }
         __weak UITableView *weakTable = table;
@@ -368,14 +383,22 @@ static void requestHeight(UITableView *table) {
 static void refresh(UITableViewCell *cell) {
     if (!cell || !NSThread.isMainThread || heightDepth) return;
     QARBadgeCellState *state = stateFor(cell);
-    unsigned visited = 0; id record = findRecord(cell.contentView, &visited);
+    UIView *avatar = state.avatarView;
+    if (!avatar || ![avatar isDescendantOfView:cell.contentView]) {
+        unsigned visited = 0; avatar = findAvatar(cell.contentView, &visited);
+        state.avatarView = avatar; atomic_fetch_add(&hierarchyScans, 1);
+    }
+    id record = avatar ? QARBadgeRecord(avatar) : nil;
     NSString *owner = QARCurrentOwner();
     if ((state.owner && ![state.owner isEqual:owner]) || state.record != record) {
         clearCell(cell); state = stateFor(cell);
     }
     state.record = record; state.owner = owner;
-    NSUInteger bubbleVisited = 0;
-    UIView *bubble = findBubble(cell.contentView, &bubbleVisited);
+    UIView *bubble = state.bubbleView;
+    if (!bubble || bubble.hidden || bubble.alpha < 0.01 || ![bubble isDescendantOfView:cell.contentView]) {
+        NSUInteger bubbleVisited = 0; bubble = findBubble(cell.contentView, &bubbleVisited);
+        state.bubbleView = bubble; atomic_fetch_add(&hierarchyScans, 1);
+    }
     state.bubbleFrame = bubble ? [bubble convertRect:bubble.bounds toView:cell.contentView] : CGRectZero;
     // Cache both positive and negative lookups. Layout can run many times per frame;
     // flash lookup otherwise synchronously visits the storage queue and filesystem.
@@ -451,7 +474,7 @@ static void attachmentRefresh(id object) {
     __weak UIView *view = object;
     dispatch_async(dispatch_get_main_queue(), ^{
         UIView *strongView = view;
-        if (strongView.window) refresh(parentCell(strongView));
+        if (strongView.window) scheduleRefresh(parentCell(strongView));
     });
 }
 static void avatarWindow(id self, SEL cmd) {
@@ -467,7 +490,7 @@ static void avatarSuperview(id self, SEL cmd) {
 static void avatarLayout(id self, SEL cmd) {
     atomic_fetch_add(&staticCalls[0], 1);
     ((void (*)(id, SEL))hooks[0].original)(self, cmd);
-    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) refresh(parentCell(self));
+    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) scheduleRefresh(parentCell(self));
 }
 static void avatarRecord(id self, SEL cmd, id record) {
     atomic_fetch_add(&staticCalls[5], 1);
@@ -500,7 +523,7 @@ static void unbindCell(id self, SEL cmd) {
 static void layoutCell(id self, SEL cmd) {
     atomic_fetch_add(&staticCalls[4], 1);
     ((void (*)(id, SEL))hooks[4].original)(self, cmd);
-    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) refresh(parentCell(self));
+    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) scheduleRefresh(parentCell(self));
 }
 void QARInstallBadge(NSDictionary *info) {
     if (!QARVersionSupported(info)) return;
@@ -552,6 +575,7 @@ NSDictionary *QARBadgeStatus(void) {
         if (entry.original) installed++;
     }
     return @{@"installed_hooks": @(installed), @"hook_results": results, @"hook_still_active": active, @"hook_calls": calls,
+        @"coalesced_layout_callbacks": @(atomic_load(&coalescedLayouts)), @"hierarchy_scans": @(atomic_load(&hierarchyScans)),
         @"content_state_checks": @(atomic_load(&contentChecks)), @"content_cache_hits": @(atomic_load(&contentCacheHits)),
         @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)), @"deferred_height_updates": @(atomic_load(&deferredHeightUpdates)),
         @"delegate_height_calls": @(atomic_load(&heightCalls)), @"rows_with_footer_reserved": @(atomic_load(&reservedRows)),
@@ -562,6 +586,7 @@ NSDictionary *QARBadgeStatus(void) {
         @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
+    atomic_store(&coalescedLayouts, 0); atomic_store(&hierarchyScans, 0);
     atomic_store(&contentChecks, 0); atomic_store(&contentCacheHits, 0);
     atomic_store(&deferredHeightUpdates, 0);
     atomic_store(&rejectedOrigin, 0); atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);

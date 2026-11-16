@@ -12,6 +12,9 @@ static IMP original;
 static QARHookResult result = QARHookMissingClass;
 static dispatch_queue_t storage;
 static NSURL *root;
+// Accessed only on the serial storage queue; one account index in memory.
+static NSString *indexOwner;
+static NSDictionary *cachedIndex;
 static atomic_ullong calls, saved, failures, unsupported, recordLookups, recordMatches;
 BOOL QARFlashEnabled(void) { return [NSUserDefaults.standardUserDefaults boolForKey:@"QARFlashRetentionEnabled"]; }
 void QARSetFlashEnabled(BOOL enabled) {
@@ -106,6 +109,7 @@ static void capture(id value, NSString *owner, id sourcePath) {
             bytes += size.unsignedLongLongValue;
             if (++count > 100 || bytes > 128*1024*1024) [manager removeItemAtURL:url error:nil];
         }
+        cachedIndex = nil; indexOwner = nil;
         NSString *key = pathKey(sourcePath);
         if (key && [manager fileExistsAtPath:target.path]) {
             NSURL *indexURL = [directory URLByAppendingPathComponent:@"paths.plist"];
@@ -146,7 +150,7 @@ NSArray<NSURL *> *QARFlashFiles(void) {
 }
 void QARClearFlash(void) {
     prepare(); NSString *owner = QARCurrentOwner(); if (!owner) return;
-    dispatch_sync(storage, ^{ [NSFileManager.defaultManager removeItemAtURL:[root URLByAppendingPathComponent:owner] error:nil]; });
+    dispatch_sync(storage, ^{ cachedIndex = nil; indexOwner = nil; [NSFileManager.defaultManager removeItemAtURL:[root URLByAppendingPathComponent:owner] error:nil]; });
     [NSNotificationCenter.defaultCenter postNotificationName:QARStoreChangedNotification object:nil];
 }
 NSDictionary *QARFlashStatus(void) {
@@ -200,7 +204,11 @@ static NSURL *fileForPaths(NSArray *paths, NSString *owner) {
     prepare(); __block NSURL *found = nil;
     dispatch_sync(storage, ^{
         NSURL *directory = [root URLByAppendingPathComponent:owner];
-        NSDictionary *index = [NSDictionary dictionaryWithContentsOfURL:[directory URLByAppendingPathComponent:@"paths.plist"]];
+        if (!cachedIndex || ![indexOwner isEqual:owner]) {
+            cachedIndex = [NSDictionary dictionaryWithContentsOfURL:[directory URLByAppendingPathComponent:@"paths.plist"]] ?: @{};
+            indexOwner = [owner copy];
+        }
+        NSDictionary *index = cachedIndex;
         for (id path in paths) {
             NSString *key = pathKey(path); id name = key ? index[key] : nil;
             if (![name isKindOfClass:NSString.class] || ![name isEqual:[name lastPathComponent]] || ![[name pathExtension] isEqual:@"png"]) continue;
@@ -249,6 +257,6 @@ void QARPresentFlashRecord(UIViewController *presenter, id record) {
 }
 #ifdef QAR_TESTING
 void QARFlashUseTestDirectory(NSURL *directory) {
-    prepare(); dispatch_sync(storage, ^{ root = directory; });
+    prepare(); dispatch_sync(storage, ^{ root = directory; cachedIndex = nil; indexOwner = nil; });
 }
 #endif

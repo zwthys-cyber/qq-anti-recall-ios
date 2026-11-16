@@ -441,13 +441,63 @@ static void testFlash(void) {
                     CGFloat bottom = MAX(-table.adjustedContentInset.top,
                         table.contentSize.height + table.adjustedContentInset.bottom - table.bounds.size.height);
                     check(bottom - table.contentOffset.y > 100, "reading history is not forced to the latest message");
-                    report(@"PASS: UIKit footer geometry, chat flash replay twice, independent switch, settings isolation, busy updates, bottom following and history position");
-                    fflush(stdout); exit(0);
+                    [self verifyPreferences];
                 });
             });
         });
     });
 }
+
+- (void)verifyPreferences {
+    QAROpenSettingsPanel(self.controller);
+    after(^{
+        UINavigationController *nav = (id)self.controller.presentedViewController;
+        check([nav isKindOfClass:UINavigationController.class], "settings presents native navigation");
+        UITableViewController *page = (id)nav.topViewController;
+        check([page isKindOfClass:UITableViewController.class] && page.tableView.numberOfSections == 4,
+            "settings uses four native grouped sections");
+        NSIndexPath *recallPath = [NSIndexPath indexPathForRow:0 inSection:0];
+        NSIndexPath *flashPath = [NSIndexPath indexPathForRow:1 inSection:0];
+        UISwitch *recall = (id)[page.tableView cellForRowAtIndexPath:recallPath].accessoryView;
+        UISwitch *flash = (id)[page.tableView cellForRowAtIndexPath:flashPath].accessoryView;
+        check([recall isKindOfClass:UISwitch.class] && [flash isKindOfClass:UISwitch.class], "settings provides native accessible switches");
+        BOOL originalRecall = QAREnabled(), originalFlash = QARFlashEnabled();
+        recall.on = !originalRecall; [recall sendActionsForControlEvents:UIControlEventValueChanged];
+        check(QAREnabled() != originalRecall && QARFlashEnabled() == originalFlash, "recall switch leaves flash preference unchanged");
+        recall.on = originalRecall; [recall sendActionsForControlEvents:UIControlEventValueChanged];
+        flash.on = !originalFlash; [flash sendActionsForControlEvents:UIControlEventValueChanged];
+        check(QARFlashEnabled() != originalFlash && QAREnabled() == originalRecall, "flash switch leaves recall preference unchanged");
+        flash.on = originalFlash; [flash sendActionsForControlEvents:UIControlEventValueChanged];
+        self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+        after(^{
+            [self savePreview:@"settings-light.png"];
+            self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            after(^{
+                [self savePreview:@"settings-dark.png"];
+                NSUInteger savedBefore = QARFlashFiles().count;
+                [page tableView:page.tableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:1]];
+                after(^{
+                    UIAlertController *confirmation = (id)page.presentedViewController;
+                    check([confirmation isKindOfClass:UIAlertController.class] && confirmation.actions.count == 2,
+                        "clearing cached images requires explicit confirmation");
+                    check(QARFlashFiles().count == savedBefore, "opening clear confirmation never deletes data");
+                    [page dismissViewControllerAnimated:NO completion:^{
+                        [nav setOverrideTraitCollection:[UITraitCollection traitCollectionWithPreferredContentSizeCategory:UIContentSizeCategoryAccessibilityExtraExtraExtraLarge]
+                            forChildViewController:page];
+                        [page.tableView reloadData]; [page.tableView layoutIfNeeded];
+                        after(^{
+                            check(page.tableView.contentSize.height > 0, "large-text settings remains a scrollable table");
+                            [self savePreview:@"settings-large-text.png"];
+                            report(@"PASS: UIKit footer geometry, chat replay, scroll position, native settings switches, deletion confirmation and large text");
+                            fflush(stdout); exit(0);
+                        });
+                    }];
+                });
+            });
+        });
+    });
+}
+
 - (void)savePreview:(NSString *)name {
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:self.window.bounds.size];
     UIImage *image = [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *context) {

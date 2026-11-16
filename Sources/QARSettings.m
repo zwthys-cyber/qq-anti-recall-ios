@@ -41,7 +41,7 @@ static void attach(UIViewController *controller) {
     button.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     button.backgroundColor = UIColor.secondarySystemGroupedBackgroundColor;
     button.layer.cornerRadius = 12;
-    [button setTitle:@"防撤回与闪照 · 插件设置  ›" forState:UIControlStateNormal];
+    [button setTitle:@"QQ 增强 · 插件设置  ›" forState:UIControlStateNormal];
     QARSettingsEntry *entry = [QARSettingsEntry new]; entry.controller = controller;
     objc_setAssociatedObject(button, &entryKey, entry, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [button addTarget:entry action:@selector(open) forControlEvents:UIControlEventTouchUpInside];
