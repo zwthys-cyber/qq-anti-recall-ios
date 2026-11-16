@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <JavaScriptCore/JavaScriptCore.h>
 #import <objc/runtime.h>
 #import "QARBadge.h"
 #import "QARFlash.h"
@@ -111,6 +112,26 @@ static void waitUntil(BOOL (^condition)(void), dispatch_block_t done, NSUInteger
         waitUntil(condition, done, remaining - 1);
     });
 }
+static void testDeviceCollector(void) {
+    JSContext *context = [JSContext new];
+    [context evaluateScript:
+        @"const same={location:{origin:'https://club.vip.qq.com'},document:{scripts:[{src:'https://imgcache.qq.com/frame.mjs?token=fixture'}]},performance:{getEntriesByType:()=>[]},frames:[]};"
+        "const foreign={location:{origin:'https://other.invalid'}};"
+        "const window={location:{origin:'https://club.vip.qq.com'},document:{scripts:[{src:''}]},"
+        "performance:{getEntriesByType:()=>[{name:'https://g.gtimg.com/dynamic.js?token=fixture#secret'},{name:'https://club.vip.qq.com/api/private?token=fixture'}]},frames:[same,foreign]};"];
+    id observation = [[context evaluateScript:QARDeviceDiagnosticScript()] toDictionary];
+    check(context.exception == nil && [observation isKindOfClass:NSDictionary.class], "browser collector JavaScript executes");
+    QARDeviceRecordObservation(observation);
+    NSDictionary *status = QARDeviceDiagnosticsStatus(), *counts = status[@"last_scan_counts"];
+    check([status[@"public_script_assets"] isEqual:@[@"https://g.gtimg.com/dynamic.js", @"https://imgcache.qq.com/frame.mjs"]],
+        "removed dynamic scripts and same-origin frame modules are captured without tokens");
+    check([counts[@"inline_scripts"] intValue] == 1 && [counts[@"frames_scanned"] intValue] == 2 &&
+        [counts[@"frames_unavailable"] intValue] == 1 && [counts[@"resource_entries"] intValue] == 2,
+        "collector distinguishes inline scripts, resources and unavailable frames");
+    check(![[status description] containsString:@"fixture"] && ![[status description] containsString:@"private"],
+        "diagnostics omit request tokens and API resource paths");
+    report(@"STEP: device collector dynamic resources, same-origin frames, module assets and privacy passed");
+}
 static UIViewController *settingsResult;
 static id settingsFactory(id receiver, SEL cmd) { (void)receiver; (void)cmd; return settingsResult; }
 @interface FixtureSettingsController : UITableViewController @end
@@ -221,7 +242,7 @@ static void testFlash(void) {
     check([scene isKindOfClass:UIWindowScene.class], "UIKit window scene");
     report(@"START: scene connected");
     QARFixtureModels(); QARSetEnabled(YES);
-    testFlash(); testSettings();
+    testFlash(); testSettings(); testDeviceCollector();
     NSArray *publicAssets = QARDevicePublicAssets(@[
         @"https://imgcache.qq.com/app/device.js?token=private-fixture#secret",
         @"https://imgcache.qq.com/app/device.js?uin=private-fixture",

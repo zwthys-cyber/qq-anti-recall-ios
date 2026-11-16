@@ -50,7 +50,7 @@ sources = [
 run("xcrun", "clang", "-target", f"{arch}-apple-ios15.0-simulator", "-isysroot", sdk,
     "-fobjc-arc", "-DQAR_TESTING", "-Wall", "-Wextra", "-Werror", "-I", "Sources", "-I", "Tests",
     *(f"Sources/{name}.m" for name in sources), "Tests/ModelFixtures.m", "Tests/BadgeUITests.m",
-    "-framework", "Foundation", "-framework", "UIKit", "-framework", "CoreGraphics", "-framework", "QuickLook", "-framework", "WebKit",
+    "-framework", "Foundation", "-framework", "UIKit", "-framework", "CoreGraphics", "-framework", "QuickLook", "-framework", "WebKit", "-framework", "JavaScriptCore",
     "-o", str(app / "QARBadgeFixture"))
 run("codesign", "--force", "--sign", "-", str(app))
 devices = json.loads(run("xcrun", "simctl", "list", "devices", "available", "-j", capture_output=True).stdout)

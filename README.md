@@ -1,6 +1,6 @@
 # QQ Anti Recall iOS
 
-针对 QQ **9.3.86 / 9.3.86.617**，版本 **0.6.0-experimental**。
+针对 QQ **9.3.86 / 9.3.86.617**，版本 **0.6.1-experimental**。
 
 0.5.0 用户已确认防撤回成功：编码失败 0、保存 27 次、历史恢复 10 次，未发生字段省略。11 个运行时模型成功编码；重复历史查询的缺失计数不代表新消息全部失败。用户仍未看到标识，头像有调用但 AIOCell 的四个接口调用全为 0，列表行高代理未安装。
 
@@ -16,7 +16,7 @@
 
 ## 下载和安装
 
-从 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions) 下载本版成功构建的 **QQAntiRecall-0.6.0-9.3.86.617-arm64**。用其中 QQAntiRecall.dylib 替换旧插件，注入对应解密 QQ IPA 并与 QQ 一起重签名安装。包中附构建信息、SHA-256 与合成界面截图。动态库的 ad-hoc 签名不能代替设备安装签名。
+从 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions) 下载本版成功构建的 **QQAntiRecall-0.6.1-9.3.86.617-arm64**。用其中 QQAntiRecall.dylib 替换旧插件，注入对应解密 QQ IPA 并与 QQ 一起重签名安装。包中附构建信息、SHA-256 与合成界面截图。动态库的 ad-hoc 签名不能代替设备安装签名。
 
 ## 验证边界
 
@@ -25,6 +25,8 @@
 用户确认的是 0.5.0 消息防撤回；0.6.0 提示与闪照功能仍需真机确认。runtime_qq_verified 保留 false，不能用 Hook 安装数代替真机效果。闪照诊断在 flash_retention：decrypt_calls、images_saved、unsupported_results、save_failures 与 hook_active。
 
 [历次接口证据](Compatibility/qq-9.3.86.617.json) · [0.4.0 逐项日志分析](docs/runtime-0.4.0-analysis.md) · [闪照静态接口检查](https://github.com/zwthys-cyber/ipa-decrypt-lab/actions/runs/43775209334)
+
+0.6.1 补充设备名页面诊断：除现存脚本标签外，也扫描资源加载记录与同源子页面，支持 .mjs 模块；新增扫描数量和执行错误计数。仍不读取 Cookie、输入内容或请求体，不执行设备名提交。
 
 ## 自定义设备名：尚未实现好友可见提交
 
