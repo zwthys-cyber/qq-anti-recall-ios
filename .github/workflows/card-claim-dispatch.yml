@@ -1,0 +1,29 @@
+name: Dispatch authorized claim once
+on:
+  push:
+    branches: [codex/qq-card-claim-once]
+    paths: ['.github/workflows/card-claim-dispatch.yml']
+permissions:
+  actions: write
+jobs:
+  dispatch:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Start one confirmed manual operation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          node <<'NODE'
+          (async () => {
+            const r = await fetch('https://api.github.com/repos/' + process.env.GH_REPO + '/actions/workflows/card-claim-manual.yml/dispatches', {
+              method: 'POST',
+              headers: {'Authorization': 'Bearer ' + process.env.GH_TOKEN, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'},
+              body: JSON.stringify({ref: 'main', inputs: {mode: 'submit-once', confirm_submit: true}})
+            });
+            console.log('DISPATCH_STATUS ' + r.status);
+            if (r.status !== 204) process.exitCode = 1;
+          })().catch(() => { console.log('DISPATCH_OUTCOME_UNKNOWN_DO_NOT_RETRY'); process.exitCode = 1; });
+          NODE
