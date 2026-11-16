@@ -1,0 +1,69 @@
+name: Card claim manual
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Operation (submit-once needs explicit confirmation)
+        type: choice
+        options: [inspect, eligibility, submit-once]
+        default: inspect
+      confirm_submit:
+        description: Confirm one free order for the configured target
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: card-claim-single
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: c5292c81b63b0d83671656b04ec33404f3e0923f
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax and behavioral safeguards
+        run: |
+          node --check Tools/card-claim.cjs
+          node --check Tools/card-claim-core.cjs
+          node --test Tests/card-claim.test.cjs
+  inspect:
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: c5292c81b63b0d83671656b04ec33404f3e0923f
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser
+        run: |
+          mkdir -p "$RUNNER_TEMP/card-claim"
+          cd "$RUNNER_TEMP/card-claim"
+          npm install --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
+          node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Requested single operation
+        env:
+          NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
+          CLAIM_MODE: ${{ inputs.mode }}
+          CLAIM_ALLOW_SUBMIT: ${{ inputs.confirm_submit && inputs.mode == 'submit-once' && 'true' || 'false' }}
+          QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
+        run: node Tools/card-claim.cjs
+      - name: Save sanitized result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-claim-result-${{ github.run_id }}
+          path: results/card-claim.json
+          retention-days: 7
+          if-no-files-found: warn
