@@ -26,6 +26,6 @@ jobs:
       - name: Inspect free product or submit once
         env:
           NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
-          CLAIM_MODE: eligibility
+          CLAIM_MODE: submit-once
           QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
         run: node Tools/card-claim.cjs
