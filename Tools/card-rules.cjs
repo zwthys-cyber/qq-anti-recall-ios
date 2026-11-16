@@ -27,7 +27,13 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
     }
    }walk(j);
    if(u.pathname==='/api/getGoodsById'){
-    console.log('PRODUCT_CONFIG_KEYS '+JSON.stringify(Object.fromEntries(Object.entries(j.data||{}).map(([k,v])=>[k,typeof v]))));
+    for(const k of ['sale_restriction','buy_rate','note','docs','metadata']){
+ const v=j.data?.[k];
+ if(['sale_restriction','buy_rate'].includes(k))console.log('PUBLIC_RESTRICTION '+JSON.stringify({key:k,value:v}));
+ else if(typeof v==='string')console.log('PUBLIC_DESCRIPTION '+JSON.stringify({key:k,value:clean(v)}));
+ else if(v&&typeof v==='object')console.log('PUBLIC_METADATA_KEYS '+JSON.stringify({key:k,keys:Object.keys(v)}));
+ }
+ console.log('PRODUCT_CONFIG_KEYS '+JSON.stringify(Object.fromEntries(Object.entries(j.data||{}).map(([k,v])=>[k,typeof v]))));
     for(const [k,v] of Object.entries(j.data||{}))if(/free|limit|quota|day|reset|restrict|stock|num/i.test(k)&&typeof v==='string')console.log('PRODUCT_RULE_VALUE '+JSON.stringify({key:k,value:clean(v)}));
    }
    console.log('PUBLIC_API '+JSON.stringify({path:u.pathname,http:r.status(),keys:Object.keys(j).slice(0,30),fields}));
@@ -44,6 +50,7 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
  console.log('RULE_LINKS '+JSON.stringify(links.filter(x=>/规则|说明|帮助/.test(x.text||'')).map(x=>({text:clean(x.text||''),href:(x.href||'').split('?')[0]})).slice(0,10)));
  for(const url of [...assets].sort((a,b)=>Number(/Order|order|estriction/.test(b))-Number(/Order|order|estriction/.test(a))).slice(0,10)){
   const r=await c.request.get(url,{timeout:20000});const text=await r.text();
+  if(/saleRestriction-/.test(url))console.log('PUBLIC_RESTRICTION_CODE '+JSON.stringify(text.slice(0,6000)));
   const matches=[...text.matchAll(/名额不足|领取次数|每天.{0,8}领取|每日.{0,8}领取|free_limit|limit_type|ip_limit|PreviewPrice|is_free|sale_restriction|限购/g)].slice(0,12);
   console.log('PUBLIC_SCRIPT '+JSON.stringify({path:new URL(url).pathname,bytes:text.length,samples:matches.map(m=>clean(text.slice(Math.max(0,m.index-150),m.index+260)))}));
  }
