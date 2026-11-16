@@ -157,9 +157,9 @@ static void testDeviceNameAdapter(void) {
     context[@"fixtureBody"] = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     NSDictionary *changed = [[context evaluateScript:
         @"var first=new XMLHttpRequest();first.open('POST','/srf-cgi-node?srfname=fixture');first.send(fixtureBody);JSON.parse(first.sent).args[0]"] toDictionary];
-    check(context.exception == nil && [changed[@"sModelShow"] isEqual:name], "device adapter supports arbitrary Unicode and quotes");
-    NSMutableDictionary *preserved = [changed mutableCopy]; preserved[@"sModelShow"] = @"iPhone";
-    check([preserved isEqual:arg], "device adapter preserves account, device binding, version, description and all other fields");
+    check(context.exception == nil && [changed[@"sDesc"] isEqual:name], "device adapter supports arbitrary Unicode and quotes");
+    NSMutableDictionary *preserved = [changed mutableCopy]; preserved[@"sDesc"] = @"existing description";
+    check([preserved isEqual:arg], "device adapter preserves account, device binding, version, selected model and all other fields");
     check([[context evaluateScript:@"posted[posted.length-1].last_result"] toInt32] == 1, "both server success codes are required for acceptance");
     [context evaluateScript:
         @"var denied=new XMLHttpRequest();denied.response={ret:0,data:{rsp:{iRet:9}}};denied.open('POST','/srf-cgi-node');denied.send(fixtureBody);"];
@@ -173,7 +173,7 @@ static void testDeviceNameAdapter(void) {
     BOOL fetchOK = [[context evaluateScript:
         @"var init=Object.freeze({method:'POST',credentials:'include',body:fixtureBody,headers:{'Content-Type':'application/json'}});"
         "var answer=fetch('/srf-cgi-node',init);answer===fetchReply&&fetchSeen.init.credentials===init.credentials&&fetchSeen.init.headers===init.headers&&init.body===fixtureBody"] toBool];
-    check(fetchOK && [[[context evaluateScript:@"JSON.parse(fetchSeen.init.body).args[0].sModelShow"] toString] isEqual:name],
+    check(fetchOK && [[[context evaluateScript:@"JSON.parse(fetchSeen.init.body).args[0].sDesc"] toString] isEqual:name],
         "fetch adapter preserves original options and response without mutating input");
     [context evaluateScript:@"defer=true;var stale=new XMLHttpRequest();stale.open('POST','/srf-cgi-node');stale.send(fixtureBody);"];
     [context evaluateScript:QARDeviceNameScript(@{@"uin":@"10001", @"text":@"新的设备名"})];
@@ -354,6 +354,14 @@ static void testFlash(void) {
             [flashPill.accessibilityLabel isEqual:@"闪照 · 再次查看"], "flash replay entry appears on its chat message");
         check(CGRectGetMaxY(flashPill.frame) <= flashCell.contentView.bounds.size.height,
             "flash replay footer stays within its own message row");
+        QARBadgeRefreshCellForTest(flashCell);
+        unsigned long long lookups = [QARFlashStatus()[@"chat_record_lookups"] unsignedLongLongValue];
+        unsigned long long refreshes = [QARBadgeStatus()[@"height_refreshes"] unsignedLongLongValue];
+        for (NSUInteger i=0; i<128; i++) QARBadgeRefreshCellForTest(flashCell);
+        check([QARFlashStatus()[@"chat_record_lookups"] unsignedLongLongValue] <= lookups + 2,
+            "stable layout burst reuses flash lookup instead of synchronously reading storage each time");
+        check([QARBadgeStatus()[@"height_refreshes"] unsignedLongLongValue] == refreshes,
+            "stable layout burst does not refresh table height");
         report(@"STEP: opaque view model, false bind result, actual delegate, badge geometry and ordinary rows passed");
         [self savePreview:@"badge-light.png"];
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;

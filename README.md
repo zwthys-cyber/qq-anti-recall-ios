@@ -1,6 +1,6 @@
 # QQ Anti Recall iOS
 
-针对 QQ **9.3.86 / 9.3.86.617**，版本 **0.7.0-experimental**。
+针对 QQ **9.3.86 / 9.3.86.617**，版本 **0.7.1-experimental**。
 
 0.5.0 用户已确认防撤回成功：编码失败 0、保存 27 次、历史恢复 10 次，未发生字段省略。11 个运行时模型成功编码；重复历史查询的缺失计数不代表新消息全部失败。用户仍未看到标识，头像有调用但 AIOCell 的四个接口调用全为 0，列表行高代理未安装。
 
@@ -16,7 +16,7 @@
 
 ## 下载和安装
 
-从 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions) 下载本版成功构建的 **QQAntiRecall-0.7.0-9.3.86.617-arm64**。用其中 QQAntiRecall.dylib 替换旧插件，注入对应解密 QQ IPA 并与 QQ 一起重签名安装。包中附构建信息、SHA-256 与合成界面截图。动态库的 ad-hoc 签名不能代替设备安装签名。
+从 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions) 下载本版成功构建的 **QQAntiRecall-0.7.1-9.3.86.617-arm64**。用其中 QQAntiRecall.dylib 替换旧插件，注入对应解密 QQ IPA 并与 QQ 一起重签名安装。包中附构建信息、SHA-256 与合成界面截图。动态库的 ad-hoc 签名不能代替设备安装签名。
 
 ## 验证边界
 
@@ -43,3 +43,7 @@
 配置按账号保存在本机。诊断 device_name_integration.submission 仅包含是否配置、请求修改次数和结果计数，不含输入的设备名、账号、Cookie、请求体或设备绑定参数。public_script_assets 的资源诊断仍可用于适配没有匹配的页面版本。
 
 接口线索来自公开源代码中对官方服务的调用：[QQTool 的在线状态功能](https://github.com/netcccyun/toolbox/blob/45ccaee1f4d67ef2abeebb72907e43e10fed4991/app/lib/QQTool.php)。实现采用官方页面实际请求的结构校验，不照搬旧 Android 参数或另取登录凭据。
+
+### 0.7.1 performance and submission correction
+
+Layout callbacks reuse recall/flash state for up to 0.5 seconds, invalidated immediately on store/switch notifications and record rebinding. Unchanged store notifications no longer force whole-table height updates; hook-origin checks run during installation instead of each layout. Device-name submission changes the official custom text field (`sDesc`) while preserving the selected model (`sModelShow`). The observed server code -5 is not assigned an undocumented meaning; server acceptance and friend-visible output still require device verification.

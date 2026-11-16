@@ -98,7 +98,7 @@ void QARPresentDeviceNameEditor(UIViewController *presenter) {
     if (!presenter || !NSThread.isMainThread) return;
     NSString *owner = QARCurrentOwner(); if (!owner) return;
     UIAlertController *editor = [UIAlertController alertControllerWithTitle:@"自定义设备名"
-        message:@"填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
+        message:@"填写的内容会提交到“自定义文字”，保留页面选择的机型。填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
         preferredStyle:UIAlertControllerStyleAlert];
     [editor addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.text = customName(); field.placeholder = @"输入想显示的设备名";

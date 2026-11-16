@@ -5,6 +5,7 @@
 #import "QARStore.h"
 #import "QARFlash.h"
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -79,6 +80,8 @@
 @property(nonatomic) NSUInteger attempts;
 @property(nonatomic) BOOL reportedUnavailable;
 @property(nonatomic) CGRect bubbleFrame;
+@property(nonatomic) NSUInteger contentEpoch;
+@property(nonatomic) CFTimeInterval contentCheckedAt;
 @end
 @implementation QARBadgeCellState @end
 @interface QARBadgeTableState : NSObject
@@ -114,6 +117,8 @@ static char stateKey, tableKey;
 static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
 static BOOL versionReady;
+static NSUInteger contentEpoch = 1;
+static atomic_uint_fast64_t contentChecks, contentCacheHits;
 static _Thread_local unsigned heightDepth;
 static atomic_uint_fast64_t noTable, detachedTable, rejectedOrigin, deferredHeightUpdates;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges, recordsFound, missingPath;
@@ -150,9 +155,9 @@ static UITableView *parentTable(UIView *view) {
 }
 static QARBadgeCellState *stateFor(UITableViewCell *cell) {
     if (!cell) return nil;
-    ensureActualCell(cell);
     QARBadgeCellState *state = objc_getAssociatedObject(cell, &stateKey);
     if (!state) {
+        ensureActualCell(cell);
         state = [QARBadgeCellState new];
         objc_setAssociatedObject(cell, &stateKey, state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (!visibleCells) visibleCells = [NSHashTable weakObjectsHashTable];
@@ -207,6 +212,7 @@ static void clearCell(UITableViewCell *cell) {
     removeRow(state, cell);
     [state.pill removeFromSuperview]; state.pill = nil; state.record = nil; state.owner = nil;
     state.marked = NO; state.flash = NO; state.reserved = 0; state.baseHeight = 0; state.attempts = 0; state.reportedUnavailable = NO;
+    state.contentEpoch = 0; state.contentCheckedAt = 0;
 }
 static double delegateHeight(QARDelegateHook *entry, id receiver, UITableView *table, NSIndexPath *path) {
     BOOL nested = heightDepth > 0; heightDepth++;
@@ -274,10 +280,10 @@ static void ensureActualCell(UITableViewCell *cell) {
 static BOOL ensureDelegate(UITableView *table) {
     if (!versionReady || !table.delegate) return NO;
     Class cls = object_getClass(table.delegate);
-    if (!delegateFromQQ(cls)) { atomic_fetch_add(&rejectedOrigin, 1); return NO; }
     SEL selector = @selector(tableView:heightForRowAtIndexPath:);
     for (QARDelegateHook *entry in delegateHooks)
         if (entry.target == cls) return entry.original && class_getMethodImplementation(cls, selector) == entry.replacement;
+    if (!delegateFromQQ(cls)) { atomic_fetch_add(&rejectedOrigin, 1); return NO; }
     Method method = class_getInstanceMethod(cls, selector);
     if (!method) { atomic_fetch_add(&missingHeightMethod, 1); return NO; }
     if (!QARSignaturesMatch(method_getTypeEncoding(method), "d32@0:8@16@24")) {
@@ -372,8 +378,18 @@ static void refresh(UITableViewCell *cell) {
     NSUInteger bubbleVisited = 0;
     UIView *bubble = findBubble(cell.contentView, &bubbleVisited);
     state.bubbleFrame = bubble ? [bubble convertRect:bubble.bounds toView:cell.contentView] : CGRectZero;
-    BOOL marked = record && QARIsMarkedRecord(record);
-    BOOL flash = record && QARFlashURLForRecord(record) != nil;
+    // Cache both positive and negative lookups. Layout can run many times per frame;
+    // flash lookup otherwise synchronously visits the storage queue and filesystem.
+    // Store/switch notifications invalidate immediately; the short expiry also covers
+    // QQ mutating a record in place without rebinding it.
+    CFTimeInterval now = CACurrentMediaTime();
+    BOOL marked = state.marked, flash = state.flash;
+    if (state.contentEpoch != contentEpoch || now - state.contentCheckedAt >= 0.5) {
+        marked = record && QARIsMarkedRecord(record);
+        flash = record && QARFlashURLForRecord(record) != nil;
+        state.contentEpoch = contentEpoch; state.contentCheckedAt = now;
+        atomic_fetch_add(&contentChecks, 1);
+    } else atomic_fetch_add(&contentCacheHits, 1);
     if (state.marked != marked || state.flash != flash) { state.attempts = 0; state.reportedUnavailable = NO; }
     state.marked = marked; state.flash = flash;
     if (record) atomic_fetch_add(&recordsFound, 1);
@@ -416,7 +432,11 @@ static void refresh(UITableViewCell *cell) {
     state.pill.label.text = state.flash ? (state.marked ? @"已撤回 · 已保留 · 查看闪照" : @"闪照 · 再次查看") : @"已撤回 · 已保留";
     state.pill.accessibilityLabel = state.pill.label.text;
     state.pill.accessibilityTraits = state.flash ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
-    state.pill.icon.image = [UIImage systemImageNamed:state.flash ? @"photo.circle.fill" : @"arrow.uturn.backward.circle.fill"];
+    NSString *iconName = state.flash ? @"photo.circle.fill" : @"arrow.uturn.backward.circle.fill";
+    if (![state.pill.icon.accessibilityIdentifier isEqual:iconName]) {
+        state.pill.icon.image = [UIImage systemImageNamed:iconName];
+        state.pill.icon.accessibilityIdentifier = iconName;
+    }
     CGFloat width = cell.contentView.bounds.size.width;
     CGSize size = [state.pill sizeThatFits:CGSizeMake(MAX(0, width - 32), CGFLOAT_MAX)];
     size.width = MIN(size.width, MAX(0, width - 32));
@@ -424,7 +444,8 @@ static void refresh(UITableViewCell *cell) {
     CGFloat desiredX = usableBubble(state, state.baseHeight) ? CGRectGetMinX(state.bubbleFrame) : 56;
     CGFloat x = MIN(desiredX, MAX(16, width - size.width - 16));
     state.pill.frame = CGRectMake(x, pillTop(state, state.baseHeight), size.width, size.height);
-    state.pill.hidden = NO; [cell.contentView bringSubviewToFront:state.pill];
+    state.pill.hidden = NO;
+    if (cell.contentView.subviews.lastObject != state.pill) [cell.contentView bringSubviewToFront:state.pill];
 }
 static void attachmentRefresh(id object) {
     if (!NSThread.isMainThread || ![object isKindOfClass:UIView.class]) return;
@@ -452,7 +473,11 @@ static void avatarLayout(id self, SEL cmd) {
 static void avatarRecord(id self, SEL cmd, id record) {
     atomic_fetch_add(&staticCalls[5], 1);
     ((void (*)(id, SEL, id))hooks[5].original)(self, cmd, record);
-    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) refresh(parentCell(self));
+    if (NSThread.isMainThread && [self isKindOfClass:UIView.class]) {
+        UITableViewCell *cell = parentCell(self);
+        stateFor(cell).contentEpoch = 0;
+        refresh(cell);
+    }
 }
 static BOOL bindCell(id self, SEL cmd, id model) {
     atomic_fetch_add(&staticCalls[1], 1);
@@ -492,12 +517,13 @@ void QARInstallBadge(NSDictionary *info) {
                                          UIContentSizeCategoryDidChangeNotification]) {
             [NSNotificationCenter.defaultCenter addObserverForName:notification object:nil
                 queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) {
-                    NSMutableSet *tables = [NSMutableSet new];
+                    contentEpoch++;
                     for (UITableViewCell *cell in visibleCells.allObjects) {
+                        if (!cell.window) continue;
                         stateFor(cell).attempts = 0; refresh(cell);
-                        UITableView *table = parentTable(cell); if (table) [tables addObject:table];
                     }
-                    for (UITableView *table in tables) requestHeight(table);
+                    // refresh requests a height update only when geometry changed.
+                    // Ordinary incoming-message notifications must not relayout the table.
                 }];
         }
     });
@@ -527,6 +553,7 @@ NSDictionary *QARBadgeStatus(void) {
         if (entry.original) installed++;
     }
     return @{@"installed_hooks": @(installed), @"hook_results": results, @"hook_still_active": active, @"hook_calls": calls,
+        @"content_state_checks": @(atomic_load(&contentChecks)), @"content_cache_hits": @(atomic_load(&contentCacheHits)),
         @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)), @"deferred_height_updates": @(atomic_load(&deferredHeightUpdates)),
         @"delegate_height_calls": @(atomic_load(&heightCalls)), @"rows_with_footer_reserved": @(atomic_load(&reservedRows)),
         @"records_found": @(atomic_load(&recordsFound)), @"table_not_attached": @(atomic_load(&noTable)),
@@ -536,6 +563,7 @@ NSDictionary *QARBadgeStatus(void) {
         @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
+    atomic_store(&contentChecks, 0); atomic_store(&contentCacheHits, 0);
     atomic_store(&deferredHeightUpdates, 0);
     atomic_store(&rejectedOrigin, 0); atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);
     atomic_store(&displayed, 0); atomic_store(&unresolved, 0); atomic_store(&heightChanges, 0);
