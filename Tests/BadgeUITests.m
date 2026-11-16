@@ -73,8 +73,10 @@ static void check(BOOL condition, const char *why) {
 @end
 @interface FixtureTable : UITableView
 @property(nonatomic) BOOL fixtureUpdatesPending;
+@property(nonatomic) BOOL fixtureDragging;
 @end
 @implementation FixtureTable
+- (BOOL)isDragging { return self.fixtureDragging || [super isDragging]; }
 - (BOOL)hasUncommittedUpdates { return self.fixtureUpdatesPending || [super hasUncommittedUpdates]; }
 - (UITableViewCell *)cellForRowAtIndexPath:(NSIndexPath *)path {
     check(!QARBadgeHeightCallbackForTest(), "row-height hooks must never recursively query UITableView cells");
@@ -329,11 +331,16 @@ static void testFlash(void) {
     self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
     self.window.rootViewController = [[UINavigationController alloc] initWithRootViewController:self.controller];
     ((FixtureTable *)self.controller.tableView).fixtureUpdatesPending = YES;
+    ((FixtureTable *)self.controller.tableView).fixtureDragging = YES;
     [self.window makeKeyAndVisible];
     for (NSUInteger n=0; n<64; n++) for (UITableViewCell *cell in self.controller.tableView.visibleCells)
         QARBadgeRefreshCellForTest(cell);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
         ((FixtureTable *)self.controller.tableView).fixtureUpdatesPending = NO;
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
+        check([QARBadgeStatus()[@"height_refreshes"] unsignedIntegerValue] == 0, "footer height work waits until dragging stops");
+        ((FixtureTable *)self.controller.tableView).fixtureDragging = NO;
     });
     after(^{
         UITableView *table = self.controller.tableView;
