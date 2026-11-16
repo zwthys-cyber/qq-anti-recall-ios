@@ -77,6 +77,7 @@
 @property(nonatomic) CGFloat reserved;
 @property(nonatomic) CGFloat baseHeight;
 @property(nonatomic) NSUInteger attempts;
+@property(nonatomic) BOOL reportedUnavailable;
 @end
 @implementation QARBadgeCellState @end
 @interface QARBadgeTableState : NSObject
@@ -111,7 +112,7 @@ static NSHashTable<UITableViewCell *> *visibleCells;
 static NSMutableArray<QARDelegateHook *> *delegateHooks;
 static BOOL versionReady;
 static _Thread_local unsigned heightDepth;
-static atomic_uint_fast64_t noTable, detachedTable, rejectedOrigin;
+static atomic_uint_fast64_t noTable, detachedTable, rejectedOrigin, deferredHeightUpdates;
 static atomic_uint_fast64_t displayed, unresolved, heightChanges, recordsFound, missingPath;
 static atomic_uint_fast64_t heightCalls, reservedRows, missingHeightMethod, delegateABIRejects, autoHeights;
 static atomic_uint_fast64_t staticCalls[8];
@@ -180,7 +181,7 @@ static void clearCell(UITableViewCell *cell) {
     QARBadgeCellState *state = cell ? objc_getAssociatedObject(cell, &stateKey) : nil;
     removeRow(state, cell);
     [state.pill removeFromSuperview]; state.pill = nil; state.record = nil; state.owner = nil;
-    state.marked = NO; state.flash = NO; state.reserved = 0; state.baseHeight = 0; state.attempts = 0;
+    state.marked = NO; state.flash = NO; state.reserved = 0; state.baseHeight = 0; state.attempts = 0; state.reportedUnavailable = NO;
 }
 static double delegateHeight(QARDelegateHook *entry, id receiver, UITableView *table, NSIndexPath *path) {
     BOOL nested = heightDepth > 0; heightDepth++;
@@ -271,21 +272,40 @@ static BOOL ensureDelegate(UITableView *table) {
     [delegateHooks addObject:entry];
     return entry.result == QARHookInstalled;
 }
+static void performHeightUpdate(UITableView *table, NSUInteger deferrals) {
+    QARBadgeTableState *current = table ? objc_getAssociatedObject(table, &tableKey) : nil;
+    if (!current) return;
+    if (!table.window) { current.pending = NO; return; }
+    if (table.hasUncommittedUpdates) {
+        atomic_fetch_add(&deferredHeightUpdates, 1);
+        if (deferrals >= 20) { current.pending = NO; return; }
+        __weak UITableView *weakTable = table;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 20), dispatch_get_main_queue(), ^{
+            performHeightUpdate(weakTable, deferrals + 1);
+        });
+        return;
+    }
+    // Only completed attempts consume the row budget; repeated layout calls while
+    // an update is queued or QQ is applying its own batch must not consume it.
+    for (UITableViewCell *cell in table.visibleCells) {
+        QARBadgeCellState *state = objc_getAssociatedObject(cell, &stateKey);
+        if (!state) continue;
+        CGFloat needed = state.flash ? MAX(44, footerHeight()) : (state.marked ? footerHeight() : 0);
+        if (fabs(state.reserved - needed) > 0.5 ||
+            (needed > 0 && cell.bounds.size.height < state.baseHeight + needed - 1)) state.attempts++;
+    }
+    @try {
+        [UIView performWithoutAnimation:^{ [table beginUpdates]; [table endUpdates]; }];
+        atomic_fetch_add(&heightChanges, 1);
+    } @finally { current.pending = NO; }
+    for (UITableViewCell *cell in table.visibleCells) refresh(cell);
+}
 static void requestHeight(UITableView *table) {
     QARBadgeTableState *tableState = table ? objc_getAssociatedObject(table, &tableKey) : nil;
     if (!tableState || tableState.pending || !ensureDelegate(table)) return;
     tableState.pending = YES;
     __weak UITableView *weakTable = table;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UITableView *strongTable = weakTable;
-        QARBadgeTableState *current = strongTable ? objc_getAssociatedObject(strongTable, &tableKey) : nil;
-        if (!strongTable || !current) return;
-        current.pending = NO;
-        if (!strongTable.window || strongTable.hasUncommittedUpdates) return;
-        [UIView performWithoutAnimation:^{ [strongTable beginUpdates]; [strongTable endUpdates]; }];
-        atomic_fetch_add(&heightChanges, 1);
-        for (UITableViewCell *cell in strongTable.visibleCells) refresh(cell);
-    });
+    dispatch_async(dispatch_get_main_queue(), ^{ performHeightUpdate(weakTable, 0); });
 }
 static void refresh(UITableViewCell *cell) {
     if (!cell || !NSThread.isMainThread || heightDepth) return;
@@ -296,8 +316,10 @@ static void refresh(UITableViewCell *cell) {
         clearCell(cell); state = stateFor(cell);
     }
     state.record = record; state.owner = owner;
-    state.marked = record && QARIsMarkedRecord(record);
-    state.flash = record && QARFlashURLForRecord(record) != nil;
+    BOOL marked = record && QARIsMarkedRecord(record);
+    BOOL flash = record && QARFlashURLForRecord(record) != nil;
+    if (state.marked != marked || state.flash != flash) { state.attempts = 0; state.reportedUnavailable = NO; }
+    state.marked = marked; state.flash = flash;
     if (record) atomic_fetch_add(&recordsFound, 1);
     UITableView *table = parentTable(cell);
     if (record && !table) atomic_fetch_add(&noTable, 1);
@@ -305,7 +327,7 @@ static void refresh(UITableViewCell *cell) {
     if (table && table.window && record) {
         NSIndexPath *path = [table indexPathForCell:cell]; // Deliberately outside delegateHeight.
         if (path) {
-            if (state.table != table || ![state.path isEqual:path]) removeRow(state, cell);
+            if (state.table != table || ![state.path isEqual:path]) { removeRow(state, cell); state.attempts = 0; state.reportedUnavailable = NO; }
             QARBadgeTableState *tableState = objc_getAssociatedObject(table, &tableKey);
             if (!tableState) {
                 tableState = [QARBadgeTableState new];
@@ -317,16 +339,17 @@ static void refresh(UITableViewCell *cell) {
     }
     if (!state.marked && !state.flash) {
         state.pill.hidden = YES;
-        if (state.reserved > 0 && table.window && state.attempts++ < 3) requestHeight(table);
+        if (state.reserved > 0 && table.window && state.attempts < 3) requestHeight(table);
         return;
     }
     CGFloat extra = state.flash ? MAX(44, footerHeight()) : footerHeight();
     if (state.reserved < extra - 0.5 || cell.bounds.size.height < state.baseHeight + extra - 1) {
         state.pill.hidden = YES;
-        if (table.window && state.path && state.attempts++ < 3) requestHeight(table);
-        else if (table.window && state.attempts > 3) atomic_fetch_add(&unresolved, 1);
+        if (table.window && state.path && state.attempts < 3) requestHeight(table);
+        else if (table.window && state.attempts >= 3 && !state.reportedUnavailable) { state.reportedUnavailable = YES; atomic_fetch_add(&unresolved, 1); }
         return;
     }
+    state.attempts = 0; state.reportedUnavailable = NO;
     if (!state.pill) {
         state.pill = [[QARRecallPill alloc] initWithFrame:CGRectZero];
         [cell.contentView addSubview:state.pill]; atomic_fetch_add(&displayed, 1);
@@ -447,7 +470,7 @@ NSDictionary *QARBadgeStatus(void) {
         if (entry.original) installed++;
     }
     return @{@"installed_hooks": @(installed), @"hook_results": results, @"hook_still_active": active, @"hook_calls": calls,
-        @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)),
+        @"badges_created": @(atomic_load(&displayed)), @"height_refreshes": @(atomic_load(&heightChanges)), @"deferred_height_updates": @(atomic_load(&deferredHeightUpdates)),
         @"delegate_height_calls": @(atomic_load(&heightCalls)), @"rows_with_footer_reserved": @(atomic_load(&reservedRows)),
         @"records_found": @(atomic_load(&recordsFound)), @"table_not_attached": @(atomic_load(&noTable)),
         @"table_without_window": @(atomic_load(&detachedTable)), @"row_path_unavailable": @(atomic_load(&missingPath)),
@@ -456,6 +479,7 @@ NSDictionary *QARBadgeStatus(void) {
         @"text": @"已撤回 · 已保留"};
 }
 void QARResetBadgeCounters(void) {
+    atomic_store(&deferredHeightUpdates, 0);
     atomic_store(&rejectedOrigin, 0); atomic_store(&noTable, 0); atomic_store(&detachedTable, 0);
     atomic_store(&displayed, 0); atomic_store(&unresolved, 0); atomic_store(&heightChanges, 0);
     atomic_store(&heightCalls, 0); atomic_store(&reservedRows, 0); atomic_store(&recordsFound, 0);

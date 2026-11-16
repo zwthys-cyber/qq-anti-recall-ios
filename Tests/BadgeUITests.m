@@ -69,8 +69,11 @@ static void check(BOOL condition, const char *why) {
     self.body.frame = CGRectMake(56, 14, MIN(280, self.bounds.size.width - 72), 50);
 }
 @end
-@interface FixtureTable : UITableView @end
+@interface FixtureTable : UITableView
+@property(nonatomic) BOOL fixtureUpdatesPending;
+@end
 @implementation FixtureTable
+- (BOOL)hasUncommittedUpdates { return self.fixtureUpdatesPending || [super hasUncommittedUpdates]; }
 - (UITableViewCell *)cellForRowAtIndexPath:(NSIndexPath *)path {
     check(!QARBadgeHeightCallbackForTest(), "row-height hooks must never recursively query UITableView cells");
     return [super cellForRowAtIndexPath:path];
@@ -271,12 +274,19 @@ static void testFlash(void) {
     self.controller.tableView.estimatedRowHeight = 0;
     self.window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
     self.window.rootViewController = [[UINavigationController alloc] initWithRootViewController:self.controller];
+    ((FixtureTable *)self.controller.tableView).fixtureUpdatesPending = YES;
     [self.window makeKeyAndVisible];
+    for (NSUInteger n=0; n<64; n++) for (UITableViewCell *cell in self.controller.tableView.visibleCells)
+        QARBadgeRefreshCellForTest(cell);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
+        ((FixtureTable *)self.controller.tableView).fixtureUpdatesPending = NO;
+    });
     after(^{
         UITableView *table = self.controller.tableView;
         FixtureCell *cell = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
         UIView *pill = QARBadgeViewForTest(cell);
-        check(pill && !pill.hidden, "retained message displays a badge");
+        check(pill && !pill.hidden, "retained message displays a badge despite burst layouts during QQ batch updates");
+        check([QARBadgeStatus()[@"deferred_height_updates"] unsignedIntegerValue] > 0, "busy QQ updates defer footer work without exhausting attempts");
         check(CGRectGetMinY(pill.frame) >= CGRectGetMaxY(cell.body.frame) &&
               CGRectGetMaxY(pill.frame) <= cell.contentView.bounds.size.height, "badge is below the body and inside its own row");
         UITableViewCell *second = [table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
