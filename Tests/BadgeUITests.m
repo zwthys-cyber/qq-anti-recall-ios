@@ -157,9 +157,9 @@ static void testDeviceNameAdapter(void) {
     context[@"fixtureBody"] = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     NSDictionary *changed = [[context evaluateScript:
         @"var first=new XMLHttpRequest();first.open('POST','/srf-cgi-node?srfname=fixture');first.send(fixtureBody);JSON.parse(first.sent).args[0]"] toDictionary];
-    check(context.exception == nil && [changed[@"sDesc"] isEqual:name], "device adapter supports arbitrary Unicode and quotes");
-    NSMutableDictionary *preserved = [changed mutableCopy]; preserved[@"sDesc"] = @"existing description";
-    check([preserved isEqual:arg], "device adapter preserves account, device binding, version, selected model and all other fields");
+    check(context.exception == nil && [changed[@"sModelShow"] isEqual:name] && [changed[@"sModel"] isEqual:name], "device adapter supports arbitrary Unicode and quotes");
+    NSMutableDictionary *preserved = [changed mutableCopy]; preserved[@"sModel"] = @"iPhone"; preserved[@"sModelShow"] = @"iPhone";
+    check([preserved isEqual:arg], "device adapter preserves account, device binding, version, custom prefix and all other fields");
     check([[context evaluateScript:@"posted[posted.length-1].last_result"] toInt32] == 1, "both server success codes are required for acceptance");
     [context evaluateScript:
         @"var denied=new XMLHttpRequest();denied.response={ret:0,data:{rsp:{iRet:9}}};denied.open('POST','/srf-cgi-node');denied.send(fixtureBody);"];
@@ -171,13 +171,13 @@ static void testDeviceNameAdapter(void) {
         @"var foreign=new XMLHttpRequest();foreign.open('POST','https://club.vip.qq.com.evil.invalid/srf-cgi-node');foreign.send(fixtureBody);foreign.sent===fixtureBody"] toBool];
     check(unrelated, "device adapter leaves unrelated hosts unchanged");
     check([[context evaluateScript:
-        @"var missing=JSON.parse(fixtureBody);delete missing.args[0].sDesc;var missingBody=JSON.stringify(missing);"
+        @"var missing=JSON.parse(fixtureBody);delete missing.args[0].sModel;var missingBody=JSON.stringify(missing);"
         "var unsupported=new XMLHttpRequest();unsupported.open('POST','/srf-cgi-node');unsupported.send(missingBody);unsupported.sent===missingBody"] toBool],
-        "unknown custom-text schema passes through without changing the selected model");
+        "unknown model schema passes through unchanged");
     BOOL fetchOK = [[context evaluateScript:
         @"var init=Object.freeze({method:'POST',credentials:'include',body:fixtureBody,headers:{'Content-Type':'application/json'}});"
         "var answer=fetch('/srf-cgi-node',init);answer===fetchReply&&fetchSeen.init.credentials===init.credentials&&fetchSeen.init.headers===init.headers&&init.body===fixtureBody"] toBool];
-    check(fetchOK && [[[context evaluateScript:@"JSON.parse(fetchSeen.init.body).args[0].sDesc"] toString] isEqual:name],
+    check(fetchOK && [[[context evaluateScript:@"JSON.parse(fetchSeen.init.body).args[0].sModelShow"] toString] isEqual:name],
         "fetch adapter preserves original options and response without mutating input");
     [context evaluateScript:@"defer=true;var stale=new XMLHttpRequest();stale.open('POST','/srf-cgi-node');stale.send(fixtureBody);"];
     [context evaluateScript:QARDeviceNameScript(@{@"uin":@"10001", @"text":@"新的设备名"})];

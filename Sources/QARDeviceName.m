@@ -49,7 +49,7 @@ NSString *QARDeviceNameScript(NSDictionary *config) {
         !owner || ![owner isEqual:QARCurrentOwner()] || ![message.body isKindOfClass:NSDictionary.class]) return;
     NSMutableDictionary *safe = [NSMutableDictionary new];
     for (NSString *key in @[@"installed", @"patched_requests", @"unsupported_requests", @"accepted_responses",
-                            @"rejected_responses", @"unrecognized_responses", @"last_result", @"last_code"]) {
+                            @"rejected_responses", @"unrecognized_responses", @"last_result", @"last_code", @"http_status", @"outer_code", @"inner_code", @"has_outer_code", @"has_inner_code"]) {
         id value = message.body[key];
         if ([value isKindOfClass:NSNumber.class]) safe[key] = @(MAX(-1000000000LL, MIN(1000000000LL, [value longLongValue])));
     }
@@ -83,7 +83,7 @@ void QARPrepareDeviceNamePage(WKWebView *view) {
 NSDictionary *QARDeviceNameStatus(void) {
     NSDictionary *latest = [receiptOwner isEqual:QARCurrentOwner()] ? receipt : nil;
     return @{@"configured": @(customName().length > 0), @"submission_implemented": @YES,
-        @"mode": @"official_page_save_request_adapter", @"friend_visible_verified": @NO,
+        @"mode": @"official_page_paired_model_adapter", @"friend_visible_verified": @NO,
         @"receipt": latest ?: @{}, @"preparation_failures": @(preparationFailures),
         @"captures_cookies": @NO, @"diagnostics_include_name": @NO,
         @"diagnostics_include_request_parameters": @NO};
@@ -97,8 +97,8 @@ NSDictionary *QARDeviceNameStatus(void) {
 void QARPresentDeviceNameEditor(UIViewController *presenter) {
     if (!presenter || !NSThread.isMainThread) return;
     NSString *owner = QARCurrentOwner(); if (!owner) return;
-    UIAlertController *editor = [UIAlertController alertControllerWithTitle:@"自定义设备名"
-        message:@"填写的内容会提交到“自定义文字”，保留页面选择的机型。填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
+    UIAlertController *editor = [UIAlertController alertControllerWithTitle:@"自定义机型（实验）"
+        message:@"替换机型本身，保留官方自定义文字。此方案尚未验证服务端接受。填写后回到 QQ 的“自定义设备名”页面，点击 QQ 自己的保存按钮提交。服务器接受后，请让好友确认显示。实际允许的文字以 QQ 返回为准。"
         preferredStyle:UIAlertControllerStyleAlert];
     [editor addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.text = customName(); field.placeholder = @"输入想显示的设备名";
