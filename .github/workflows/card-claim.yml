@@ -1,0 +1,31 @@
+name: Card claim one-time check
+on:
+  push:
+    branches: [codex/qq-card-claim-once]
+    paths: ['.github/workflows/card-claim.yml', 'Tools/card-claim.cjs']
+permissions:
+  contents: read
+concurrency:
+  group: card-claim-single
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser in temporary directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/card-claim"
+          cd "$RUNNER_TEMP/card-claim"
+          npm install --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
+          node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Inspect free product or submit once
+        env:
+          NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
+          CLAIM_MODE: inspect
+          QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
+        run: node Tools/card-claim.cjs
