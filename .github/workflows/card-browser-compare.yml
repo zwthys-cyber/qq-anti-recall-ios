@@ -1,0 +1,31 @@
+name: Compare claim browser profiles
+on:
+  push:
+    branches: [codex/qq-card-claim-once]
+    paths: ['Tools/card-browser-compare.cjs', '.github/workflows/card-browser-compare.yml']
+permissions:
+  contents: read
+jobs:
+  rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser
+        run: |
+          mkdir -p "$RUNNER_TEMP/rules"
+          cd "$RUNNER_TEMP/rules"
+          npm install --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
+          node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Compare previews and intercept both submissions
+        env:
+          QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
+          NODE_PATH: ${{ runner.temp }}/rules/node_modules
+        run: |
+          node --check Tools/card-browser-compare.cjs
+          node Tools/card-browser-compare.cjs
