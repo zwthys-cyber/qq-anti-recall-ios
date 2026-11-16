@@ -6,10 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Read-only inspection (never submits an order)
+        description: Operation (submit-once needs explicit confirmation)
         type: choice
-        options: [inspect, eligibility]
+        options: [inspect, eligibility, submit-once]
         default: inspect
+      confirm_submit:
+        description: Confirm one free order for the configured target
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -49,11 +53,11 @@ jobs:
           cd "$RUNNER_TEMP/card-claim"
           npm install --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
           node node_modules/playwright-core/cli.js install --with-deps chromium
-      - name: Read-only inspection
+      - name: Requested single operation
         env:
           NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
           CLAIM_MODE: ${{ inputs.mode }}
-          CLAIM_ALLOW_SUBMIT: 'false'
+          CLAIM_ALLOW_SUBMIT: ${{ inputs.confirm_submit && inputs.mode == 'submit-once' && 'true' || 'false' }}
           QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
         run: node Tools/card-claim.cjs
       - name: Save sanitized result

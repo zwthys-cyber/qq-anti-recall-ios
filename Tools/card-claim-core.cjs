@@ -1,5 +1,5 @@
 'use strict';
-const VERSION='1.1.0';
+const VERSION='1.2.0';
 const SITE='https://qqqzz.cc';
 const modes=new Set(['inspect','eligibility','submit-once']);
 function targetMatches(raw,target){
