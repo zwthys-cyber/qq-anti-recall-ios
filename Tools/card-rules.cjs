@@ -42,13 +42,18 @@ const clean=s=>s.replace(/[0-9]{5,}/g,'[number]').slice(0,600);
  await p.goto(SITE+'/',{waitUntil:'domcontentloaded',timeout:60000});
  await p.waitForTimeout(12000);
  await p.goto(SITE+'/#/order-confirm/83',{waitUntil:'domcontentloaded',timeout:45000});
- await p.locator('input[placeholder="请输入QQ号码"]').waitFor({timeout:35000});
+ await p.locator('input[placeholder="请输入QQ号码"]').waitFor({timeout:35000}).catch(()=>{});
  await p.waitForTimeout(5000);
  const body=await p.locator('body').innerText();
  console.log('PUBLIC_RULES '+JSON.stringify(body.split('\n').filter(x=>/每天|每日|名额|次数|限领|限购|限额|重置|库存|领取规则/.test(x)).map(clean).slice(0,30)));
  const links=await p.locator('a').evaluateAll(xs=>xs.map(a=>({text:a.textContent,href:a.getAttribute('href')})));
  console.log('RULE_LINKS '+JSON.stringify(links.filter(x=>/规则|说明|帮助/.test(x.text||'')).map(x=>({text:clean(x.text||''),href:(x.href||'').split('?')[0]})).slice(0,10)));
- for(const url of [...assets].filter(u=>new URL(u).pathname.startsWith('/static/')).slice(0,40)){
+ const confirmURL=SITE+'/static/OrderConfirmView-B-P_XW86.js';
+ assets.add(confirmURL);
+ const confirmResponse=await c.request.get(confirmURL,{timeout:20000});
+ const confirmSource=await confirmResponse.text();
+ for(const m of confirmSource.matchAll(/["'](\\.\\/[^"' ]+\\.js)["']/g))assets.add(new URL(m[1],confirmURL).href);
+ for(const url of [...assets].filter(u=>new URL(u).pathname.startsWith('/static/')).slice(0,70)){
   const r=await c.request.get(url,{timeout:20000});const source=await r.text();
   if(/OrderConfirmView-/.test(url))console.log('CONFIRM_IMPORTS '+JSON.stringify(source.slice(0,3500)));
   const patterns=/\/api\/add|\/api\/PreviewPrice|检查免费商品|名额不足|free_limit|ip_limit|limit_type/g;
