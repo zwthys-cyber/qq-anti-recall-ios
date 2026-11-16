@@ -1,32 +1,66 @@
-name: Card claim one-time check
+name: Card claim validation
 on:
   push:
     branches: [codex/qq-card-claim-once]
-    paths: ['.github/workflows/card-claim.yml', 'Tools/card-claim.cjs']
+    paths: ['Tools/card-claim*.cjs', 'Tests/card-claim.test.cjs', '.github/workflows/card-claim.yml', 'README.md']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only inspection (never submits an order)
+        type: choice
+        options: [inspect, eligibility]
+        default: inspect
 permissions:
   contents: read
 concurrency:
   group: card-claim-single
   cancel-in-progress: false
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax and behavioral safeguards
+        run: |
+          node --check Tools/card-claim.cjs
+          node --check Tools/card-claim-core.cjs
+          node --test Tests/card-claim.test.cjs
   inspect:
-    if: ${{ false }} # Stopped after provider quota rejection.
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install browser in temporary directory
+      - name: Install browser
         run: |
           mkdir -p "$RUNNER_TEMP/card-claim"
           cd "$RUNNER_TEMP/card-claim"
           npm install --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
           node node_modules/playwright-core/cli.js install --with-deps chromium
-      - name: Inspect free product or submit once
+      - name: Read-only inspection
         env:
           NODE_PATH: ${{ runner.temp }}/card-claim/node_modules
-          CLAIM_MODE: inspect
+          CLAIM_MODE: ${{ inputs.mode }}
+          CLAIM_ALLOW_SUBMIT: 'false'
           QQ_CARD_CLAIM_TARGET: ${{ secrets.QQ_CARD_CLAIM_TARGET }}
         run: node Tools/card-claim.cjs
+      - name: Save sanitized result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-claim-result-${{ github.run_id }}
+          path: results/card-claim.json
+          retention-days: 7
+          if-no-files-found: warn
