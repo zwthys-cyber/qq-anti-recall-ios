@@ -38,7 +38,17 @@ static void completed(id self, SEL cmd, unsigned long long reason, unsigned long
     emit(@"recordDing", 1);
     emit(NSNull.null, 0);
     emit(@"recordDing.wav", 0);
-    if (otherThread) dispatch_sync(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{ emit(@"recordDing", 0); });
+    if (otherThread) {
+        NSThread *origin = NSThread.currentThread;
+        dispatch_semaphore_t done = dispatch_semaphore_create(0);
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+            check(NSThread.currentThread != origin, "fixture audio runs on another thread");
+            emit(@"recordDing", 0);
+            dispatch_semaphore_signal(done);
+        });
+        check(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) == 0,
+            "cross-thread fixture completes within deadline");
+    }
     if (throwInCompletion) @throw [NSException exceptionWithName:@"FixtureCompletionError" reason:nil userInfo:nil];
     // Stand in for original save/UI/callback work after the audio request.
     saves++;
