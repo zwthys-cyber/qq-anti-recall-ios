@@ -412,6 +412,29 @@
       "receive_state_5_target": "0x1106a0c30",
       "receive_state_5_action": "onRecordStopReason:2, acknowledge with state 6 or 7",
       "visibility": "Inferred from disassembly, not independently verified on a peer device"
+    },
+    "completion_tone": {
+      "inspection_run": 44893558085,
+      "scope": "local synchronous recording completion callback only",
+      "callback": {
+        "class": "QQRTCP2PRecordPart",
+        "class_method": false,
+        "selector": "recordAVTinyVideoFinished:RecordStopResult:",
+        "types": "v32@0:8Q16Q24",
+        "imp": "0x1106a2cbc"
+      },
+      "playback": {
+        "class": "AVRingPlayer",
+        "class_method": false,
+        "selector": "playAudio:andLoopTime:",
+        "types": "v28@0:8@16i24",
+        "imp": "0x1104f7094"
+      },
+      "helper_imp": "0x1106a30b4",
+      "resource": "recordDing",
+      "loop_count": 0,
+      "guard": "exact QQ target and both expected Objective-C ABIs; same thread and active completion scope; existing suppression toggle enabled",
+      "runtime_verified": false
     }
   }
 }

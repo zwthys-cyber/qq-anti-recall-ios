@@ -121,7 +121,7 @@ static NSDictionary *controlStatus(void) {
         toggle.accessibilityIdentifier = path.row == 0 ? @"qar.recall.toggle" : path.row == 1 ? @"qar.flash.toggle" : @"qar.call-recording.toggle";
         [toggle addTarget:self action:@selector(toggleChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = toggle; cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        content.secondaryText = path.row == 0 ? @"保留已接收消息，显示撤回标识" : path.row == 1 ? @"打开后保留，在聊天中重复查看" : @"屏蔽发给对方的开始与结束录制提醒";
+        content.secondaryText = path.row == 0 ? @"保留已接收消息，显示撤回标识" : path.row == 1 ? @"打开后保留，在聊天中重复查看" : @"屏蔽开始／结束通知及本机结束录制提示音";
     } else if (path.section == 0) {
         content.secondaryText = @"替换机型本身，不添加文字前缀";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;

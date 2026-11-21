@@ -41,6 +41,12 @@ jobs:
           for mode in normal missing-class missing-method wrong-abi wrong-version wrong-build wrong-executable; do
             "$RUNNER_TEMP/call-recording-tests" "$mode"
           done
+      - name: Verify recording completion tone filtering and isolation
+        run: |
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Sources/QARCallRecording.m Tests/RecordingSoundTests.m -framework Foundation -o "$RUNNER_TEMP/recording-sound-tests"
+          for mode in normal late-class missing-player missing-audio missing-completion wrong-audio-abi wrong-completion-abi wrong-version; do
+            "$RUNNER_TEMP/recording-sound-tests" "$mode"
+          done
       - name: Reproduce and prevent update-before-recall message loss
         run: |
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Tests/RecallOrderTests.m -framework Foundation -o "$RUNNER_TEMP/recall-order-tests"
@@ -66,7 +72,7 @@ jobs:
       - name: Retain plugin and build evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: QQAntiRecall-0.9.1-9.3.86.617-arm64
+          name: QQAntiRecall-0.9.2-9.3.86.617-arm64
           path: |
             dist/QQAntiRecall.dylib
             dist/build-info.json

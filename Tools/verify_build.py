@@ -26,7 +26,7 @@ def main():
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     evidence = {
         "schema": "qq-anti-recall-build-v1",
-        "plugin_version": "0.9.1-experimental",
+        "plugin_version": "0.9.2-experimental",
         "source_commit": os.environ["GITHUB_SHA"],
         "run_id": os.environ["GITHUB_RUN_ID"],
         "qq_short_version": "9.3.86", "qq_build": "9.3.86.617",
