@@ -18,10 +18,10 @@ void QARSetCallRecordingSuppressionEnabled(BOOL enabled) {
 }
 static void sendRecordState(id receiver, SEL selector, int state) {
     atomic_fetch_add(&calls, 1);
-    if (QARCallRecordingSuppressionEnabled()) {
-        // This is the dedicated outbound recording-state sender, including
-        // start/end and retransmissions. Keep the local recording state machine,
-        // recording APIs, incoming peer notifications and other call traffic intact.
+    if (QARCallRecordingSuppressionEnabled() && (state == 1 || state == 3 || state == 8)) {
+        // Verified protocol: 1 = local start; 3/8 = local end/cancel paths.
+        // Keep 5 (stop the peer's recording), ACKs and unknown states intact.
+        // Retries use this same sender and the same state values.
         atomic_fetch_add(&suppressed, 1);
         return;
     }
@@ -43,7 +43,8 @@ NSDictionary *QARCallRecordingStatus(void) {
     return @{
         @"enabled": @(QARCallRecordingSuppressionEnabled()),
         @"supported_host": @(supportedHost),
-        @"scope": @"p2p_call_outgoing_recording_state",
+        @"scope": @"p2p_call_local_start_end_notifications",
+        @"preserves_peer_stop_controls": @YES,
         @"hook_result": @(result),
         @"hook_results": @{@"QQRTCP2PRecordPart -sendRecordState:": @(result)},
         @"installed_hooks": @(original != NULL),

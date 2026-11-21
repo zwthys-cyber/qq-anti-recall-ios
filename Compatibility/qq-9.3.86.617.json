@@ -343,7 +343,7 @@
       "selector": "sendRecordState:",
       "types": "v20@0:8i16",
       "imp": "0x1106a1738",
-      "mode": "suppress_outgoing_recording_states_when_enabled"
+      "mode": "suppress_only_local_recording_start_end_states_1_3_8"
     },
     "related_methods": [
       {
@@ -371,6 +371,47 @@
       "notify": "notifyPeerRecordState: calls sendRecordState: first; then adds ACK bookkeeping only for states 1, 3, 5",
       "retry": "checkRecordAck retries via sendRecordState: without restarting the recorder",
       "sender": "sendRecordState: formats the state and invokes the c2cChatEngine outbound function with message kind 8"
+    },
+    "peer_ui_inspection_run": 44891268449,
+    "suppressed_states": [
+      1,
+      3,
+      8
+    ],
+    "preserved_peer_stop_state": 5,
+    "preserved_ack_states": [
+      2,
+      4,
+      6,
+      7,
+      9
+    ],
+    "unknown_states": "forward_unchanged",
+    "peer_ui": {
+      "class": "QQRTCShowPanelRecordPart",
+      "show": {
+        "selector": "onPeerRecordBarShow:",
+        "types": "v20@0:8B16",
+        "imp": "0x1106c9314"
+      },
+      "initialize": {
+        "selector": "initPeerRecordBarIfNeeded",
+        "types": "v16@0:8",
+        "imp": "0x1106c741c",
+        "style": 0
+      },
+      "cancel": {
+        "selector": "onCancelBtn",
+        "types": "v16@0:8",
+        "imp": "0x1106c9720",
+        "outgoing_state": 5
+      },
+      "bar_class": "QQAVRecordBar",
+      "bar_cancel_imp": "0x1105aa0bc",
+      "receive_state_1_target": "0x1106a0e80",
+      "receive_state_5_target": "0x1106a0c30",
+      "receive_state_5_action": "onRecordStopReason:2, acknowledge with state 6 or 7",
+      "visibility": "Inferred from disassembly, not independently verified on a peer device"
     }
   }
 }

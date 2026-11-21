@@ -2,7 +2,7 @@
 
 [![Build and test](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml/badge.svg)](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)
 
-面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看、自定义机型与通话录制免提醒，设置入口位于 QQ 设置页。当前版本：**0.9.0-experimental**。
+面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看、自定义机型与通话录制免提醒，设置入口位于 QQ 设置页。当前版本：**0.9.1-experimental**。
 
 [下载构建](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml) · [安装与使用](docs/installation.md) · [验证与故障排查](docs/validation.md) · [更新记录](CHANGELOG.md)
 
@@ -31,7 +31,7 @@
 ## 快速开始
 
 1. 打开 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)，选择对应版本、状态为成功的运行。
-2. 下载 `QQAntiRecall-0.9.0-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
+2. 下载 `QQAntiRecall-0.9.1-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
 3. 使用已有的注入、重签名流程替换旧插件，与匹配版本 QQ 一起签名安装。不要同时注入多个版本。
 4. 进入 **QQ 设置 → QQ 增强 · 插件设置**，调整所需功能。闪照保留和通话录制免提醒默认关闭；录制免提醒请在开始录制前开启。
 

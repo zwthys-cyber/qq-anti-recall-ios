@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static NSUInteger sent, localStarts, localStops, peerUpdates, pendingAcks;
+static NSUInteger sent, localStarts, localStops, peerUpdates, pendingAcks, peerStopRequests;
 static int lastState;
 static void sender(id self, SEL cmd, int state) { (void)self; (void)cmd; sent++; lastState = state; }
 static void wrongSender(id self, SEL cmd, long long state) { (void)self; (void)cmd; sent++; lastState = (int)state; }
@@ -27,7 +27,14 @@ static void stop(id self, SEL cmd) {
     (void)cmd; localStops++;
     ((void (*)(id, SEL, int))objc_msgSend)(self, NSSelectorFromString(@"notifyPeerRecordState:"), 8);
 }
-static void receive(id self, SEL cmd, int state) { (void)self; (void)cmd; (void)state; peerUpdates++; }
+static void receive(id self, SEL cmd, int state) {
+    (void)cmd; peerUpdates++;
+    if (state == 5) {
+        // Model the existing peer-stop control and its outbound ACK.
+        peerStopRequests++;
+        ((void (*)(id, SEL, int))objc_msgSend)(self, NSSelectorFromString(@"sendRecordState:"), 6);
+    }
+}
 static void check(BOOL condition, const char *message) {
     if (!condition) { fprintf(stderr, "FAIL: %s\n", message); exit(1); }
 }
@@ -91,26 +98,38 @@ int main(int argc, const char *argv[]) {
         check([QARCallRecordingStatus()[@"hook_active"] boolValue], "sender hook active");
         QARInstallCallRecording(info);
         check([QARCallRecordingStatus()[@"installed_hooks"] intValue] == 1, "repeat installation is idempotent");
-        // All recording states, including start/end, direct calls and retries.
+        // Suppress local announcements only. Control, ACK and unknown states pass.
         int states[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, INT_MIN, INT_MAX};
-        for (NSUInteger i=0; i<sizeof(states)/sizeof(states[0]); i++) send(receiver, states[i]);
-        check(sent == 0 && [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 12, "suppress every outbound recording state");
+        for (NSUInteger i=0; i<sizeof(states)/sizeof(states[0]); i++) {
+            NSUInteger before = sent;
+            send(receiver, states[i]);
+            BOOL announcement = states[i] == 1 || states[i] == 3 || states[i] == 8;
+            check(sent == before + (announcement ? 0 : 1), "only local start/end states are suppressed");
+            if (!announcement) check(lastState == states[i], "control/ACK/unknown states preserve signed 32-bit value");
+        }
+        check(sent == 9 && [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 3, "suppress 1/3/8, preserve other states");
         check(((BOOL (*)(id, SEL))objc_msgSend)(receiver, NSSelectorFromString(@"onRecordStart")), "local recording still reports success");
         ((void (*)(id, SEL, int))objc_msgSend)(receiver, NSSelectorFromString(@"handlePeerRecordState:"), 1);
         ((void (*)(id, SEL))objc_msgSend)(receiver, NSSelectorFromString(@"stopRecord"));
         check(localStarts == 1 && localStops == 1 && peerUpdates == 1 && pendingAcks == 1, "local recording, bookkeeping and incoming methods remain callable");
-        check(sent == 0 && [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 14, "both start(1) and end(8) routes suppress notifications");
+        check(sent == 9 && [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 5, "start(1) and end(8) announcements suppressed");
+        ((void (*)(id, SEL, int))objc_msgSend)(receiver, NSSelectorFromString(@"handlePeerRecordState:"), 5);
+        check(peerStopRequests == 1 && sent == 10 && lastState == 6, "incoming peer-stop and outbound ACK remain effective");
+        ((void (*)(id, SEL, int))objc_msgSend)(receiver, NSSelectorFromString(@"notifyPeerRecordState:"), 5);
+        check(sent == 11 && lastState == 5 && pendingAcks == 2, "user can still stop the peer recording");
+        send(receiver, 1); send(receiver, 3); send(receiver, 8);
+        check(sent == 11 && [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 8, "start/end retransmissions also suppressed");
         QARSetCallRecordingSuppressionEnabled(NO);
         for (NSUInteger i=0; i<sizeof(states)/sizeof(states[0]); i++) {
             send(receiver, states[i]); check(lastState == states[i], "disabled forwards exact signed 32-bit state");
         }
-        check(sent == 12 && [QARCallRecordingStatus()[@"forwarded_notifications"] intValue] == 12, "disabled forwards once per call");
+        check(sent == 23 && [QARCallRecordingStatus()[@"forwarded_notifications"] intValue] == 23, "each permitted notification forwards once");
         ((BOOL (*)(id, SEL))objc_msgSend)(receiver, NSSelectorFromString(@"onRecordStart"));
-        check(sent == 13 && lastState == 1 && localStarts == 2, "disabled start records and sends original reminder");
+        check(sent == 24 && lastState == 1 && localStarts == 2, "disabled start records and sends original reminder");
         ((void (*)(id, SEL))objc_msgSend)(receiver, NSSelectorFromString(@"stopRecord"));
-        check(sent == 14 && lastState == 8 && localStops == 2, "disabled end stops recording and sends original reminder");
+        check(sent == 25 && lastState == 8 && localStops == 2, "disabled end stops recording and sends original reminder");
         QARSetCallRecordingSuppressionEnabled(YES); send(receiver, 1);
-        check(sent == 14, "re-enable immediately suppresses start state");
+        check(sent == 25, "re-enable immediately suppresses start state");
         QARResetCallRecordingCounters();
         check([QARCallRecordingStatus()[@"sender_calls"] intValue] == 0 &&
             [QARCallRecordingStatus()[@"suppressed_notifications"] intValue] == 0 &&
