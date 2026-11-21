@@ -45,7 +45,7 @@ sdk = run("xcrun", "--sdk", "iphonesimulator", "--show-sdk-path", capture_output
 arch = platform.machine()
 sources = [
     "QARHook", "QARAdapter", "QARTrace", "QARIncoming", "QARUpdateFilter",
-    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge", "QARFlash", "QARSettings", "QARDeviceDiagnostics", "QARDeviceName", "QARControl",
+    "QARSnapshot", "QARStore", "QARHistory", "QARBadgeRecord", "QARBadge", "QARFlash", "QARSettings", "QARDeviceDiagnostics", "QARDeviceName", "QARControl", "QARCallRecording",
 ]
 run("xcrun", "clang", "-target", f"{arch}-apple-ios15.0-simulator", "-isysroot", sdk,
     "-fobjc-arc", "-DQAR_TESTING", "-Wall", "-Wextra", "-Werror", "-I", "Sources", "-I", "Tests",

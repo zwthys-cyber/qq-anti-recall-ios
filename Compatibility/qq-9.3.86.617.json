@@ -330,5 +330,47 @@
     "selector": "decryptImageWithImagePath:",
     "types": "@24@0:8@16",
     "imp": "0x109e934fc"
+  },
+  "call_recording": {
+    "inspection_repository": "zwthys-cyber/ipa-decrypt-lab",
+    "source_export_run": 44887720434,
+    "inspection_run": 44890526592,
+    "main_executable_sha256": "60402733db43cb8b61ea818bd7dd98d2a3d7cf4d84236f3555ee9ab37c4495b0",
+    "scope": "Static metadata and bounded disassembly; not real QQ runtime validation.",
+    "hook": {
+      "class": "QQRTCP2PRecordPart",
+      "class_method": false,
+      "selector": "sendRecordState:",
+      "types": "v20@0:8i16",
+      "imp": "0x1106a1738",
+      "mode": "suppress_outgoing_recording_states_when_enabled"
+    },
+    "related_methods": [
+      {
+        "selector": "notifyPeerRecordState:",
+        "types": "v20@0:8i16",
+        "imp": "0x1106a16c0"
+      },
+      {
+        "selector": "notifyPeerRecordEnd",
+        "types": "v16@0:8",
+        "imp": "0x1106a23dc"
+      },
+      {
+        "selector": "onRecordStart",
+        "types": "B16@0:8",
+        "imp": "0x1106a2414"
+      }
+    ],
+    "default_enabled": false,
+    "runtime_qq_verified": false,
+    "friend_visible_verified": false,
+    "observed_routing": {
+      "start": "onRecordStart starts the local recorder, updates local UI, then calls notifyPeerRecordState: with 1",
+      "end": "notifyPeerRecordEnd calls notifyPeerRecordState: with 8",
+      "notify": "notifyPeerRecordState: calls sendRecordState: first; then adds ACK bookkeeping only for states 1, 3, 5",
+      "retry": "checkRecordAck retries via sendRecordState: without restarting the recorder",
+      "sender": "sendRecordState: formats the state and invokes the c2cChatEngine outbound function with message kind 8"
+    }
   }
 }

@@ -35,6 +35,12 @@ jobs:
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Tests/IncomingTests.m -framework Foundation -o "$RUNNER_TEMP/incoming-tests"
           "$RUNNER_TEMP/incoming-tests" --mismatch
           "$RUNNER_TEMP/incoming-tests"
+      - name: Verify call recording notification suppression and host guards
+        run: |
+          xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Sources/QARCallRecording.m Tests/CallRecordingTests.m -framework Foundation -o "$RUNNER_TEMP/call-recording-tests"
+          for mode in normal missing-class missing-method wrong-abi wrong-version wrong-build wrong-executable; do
+            "$RUNNER_TEMP/call-recording-tests" "$mode"
+          done
       - name: Reproduce and prevent update-before-recall message loss
         run: |
           xcrun clang -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Tests/RecallOrderTests.m -framework Foundation -o "$RUNNER_TEMP/recall-order-tests"
@@ -53,14 +59,14 @@ jobs:
       - name: Build iOS arm64 injection library
         run: |
           mkdir -p dist
-          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Sources/QARBadgeRecord.m Sources/QARBadge.m Sources/QARFlash.m Sources/QARSettings.m Sources/QARDeviceDiagnostics.m Sources/QARDeviceName.m Sources/QARControl.m -framework Foundation -framework UIKit -framework CoreGraphics -framework QuickLook -framework WebKit -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
+          xcrun clang -target arm64-apple-ios15.0 -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" -dynamiclib -fobjc-arc -Wall -Wextra -Werror -I Sources Sources/QARHook.m Sources/QARAdapter.m Sources/QARTrace.m Sources/QARIncoming.m Sources/QARUpdateFilter.m Sources/QARSnapshot.m Sources/QARStore.m Sources/QARHistory.m Sources/QARBadgeRecord.m Sources/QARBadge.m Sources/QARFlash.m Sources/QARSettings.m Sources/QARDeviceDiagnostics.m Sources/QARDeviceName.m Sources/QARCallRecording.m Sources/QARControl.m -framework Foundation -framework UIKit -framework CoreGraphics -framework QuickLook -framework WebKit -Wl,-install_name,@rpath/QQAntiRecall.dylib -o dist/QQAntiRecall.dylib
           codesign --force --sign - dist/QQAntiRecall.dylib
       - name: Verify library architecture, platform and signature
         run: python3 Tools/verify_build.py dist/QQAntiRecall.dylib
       - name: Retain plugin and build evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: QQAntiRecall-0.8.1-9.3.86.617-arm64
+          name: QQAntiRecall-0.9.0-9.3.86.617-arm64
           path: |
             dist/QQAntiRecall.dylib
             dist/build-info.json

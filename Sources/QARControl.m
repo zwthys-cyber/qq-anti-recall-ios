@@ -3,6 +3,7 @@
 #import "QARStore.h"
 #import "QARBadge.h"
 #import "QARFlash.h"
+#import "QARCallRecording.h"
 #import "QARSettings.h"
 #import "QARDeviceDiagnostics.h"
 #import "QARDeviceName.h"
@@ -13,11 +14,14 @@ static NSDictionary *controlStatus(void) {
     NSDictionary *badge = QARBadgeStatus();
     status[@"recall_badge"] = badge;
     status[@"flash_retention"] = QARFlashStatus();
+    NSDictionary *recording = QARCallRecordingStatus();
+    status[@"call_recording"] = recording;
     status[@"settings_entry"] = QARSettingsStatus();
     status[@"device_name_integration"] = QARDeviceDiagnosticsStatus();
-    status[@"installed_hooks"] = @([status[@"installed_hooks"] unsignedIntegerValue] + [badge[@"installed_hooks"] unsignedIntegerValue]);
+    status[@"installed_hooks"] = @([status[@"installed_hooks"] unsignedIntegerValue] + [badge[@"installed_hooks"] unsignedIntegerValue] + [recording[@"installed_hooks"] unsignedIntegerValue]);
     NSMutableDictionary *hooks = [status[@"hook_results"] mutableCopy];
     [hooks addEntriesFromDictionary:badge[@"hook_results"]];
+    [hooks addEntriesFromDictionary:recording[@"hook_results"]];
     status[@"hook_results"] = hooks;
     return status;
 }
@@ -78,7 +82,7 @@ static NSDictionary *controlStatus(void) {
 - (void)close { [self dismissViewControllerAnimated:YES completion:nil]; }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)table { (void)table; return 4; }
 - (NSInteger)tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section {
-    (void)table; return section == 0 ? 3 : 2;
+    (void)table; return section == 0 ? 4 : 2;
 }
 - (NSString *)tableView:(UITableView *)table titleForHeaderInSection:(NSInteger)section {
     (void)table; return @[@"聊天与个性化", @"本机存储", @"诊断与支持", @"关于"][section];
@@ -86,7 +90,7 @@ static NSDictionary *controlStatus(void) {
 - (NSString *)tableView:(UITableView *)table titleForFooterInSection:(NSInteger)section {
     (void)table;
     return @[
-        @"闪照正常打开后，可在原消息下方再次查看。自定义机型需在 QQ 官方页面点击保存。",
+        @"闪照正常打开后，可在原消息下方再次查看。自定义机型需在 QQ 官方页面点击保存。通话录制免提醒适用于一对一通话，默认关闭；请在开始录制前开启。",
         @"副本按账号隔离，仅保存在本机。关闭功能不会删除已有副本；清理后无法恢复。消息最多 512 条 / 16 MiB，闪照最多 100 张 / 128 MiB。",
         @"诊断包含功能计数和错误码，不包含聊天正文、图片、账号或填写的机型。",
         @"独立实验项目，与腾讯无隶属关系。仅适配 QQ 9.3.86（9.3.86.617）。"
@@ -95,9 +99,9 @@ static NSDictionary *controlStatus(void) {
 - (UITableViewCell *)tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath *)path {
     UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"preference"];
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"preference"];
-    NSArray *titles = @[@[@"消息防撤回", @"闪照保留", @"自定义机型"],
+    NSArray *titles = @[@[@"消息防撤回", @"闪照保留", @"自定义机型", @"通话录制免提醒"],
         @[@"清理消息副本", @"清理闪照副本"], @[@"导出诊断", @"重置诊断计数"], @[@"插件版本", @"适配版本"]];
-    NSArray *symbols = @[@[@"arrow.uturn.backward.circle", @"photo.on.rectangle", @"iphone"],
+    NSArray *symbols = @[@[@"arrow.uturn.backward.circle", @"photo.on.rectangle", @"iphone", @"bell.slash"],
         @[@"tray", @"photo"], @[@"square.and.arrow.up", @"arrow.counterclockwise"], @[@"shippingbox", @"checkmark.shield"]];
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
     content.text = titles[path.section][path.row];
@@ -109,15 +113,15 @@ static NSDictionary *controlStatus(void) {
     content.textProperties.numberOfLines = 0; content.secondaryTextProperties.numberOfLines = 0;
     cell.accessoryView = nil; cell.accessoryType = UITableViewCellAccessoryNone;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    if (path.section == 0 && path.row < 2) {
+    if (path.section == 0 && (path.row < 2 || path.row == 3)) {
         UISwitch *toggle = [UISwitch new]; toggle.tag = path.row;
         toggle.onTintColor = QARAccent();
-        toggle.on = path.row == 0 ? QAREnabled() : QARFlashEnabled();
+        toggle.on = path.row == 0 ? QAREnabled() : path.row == 1 ? QARFlashEnabled() : QARCallRecordingSuppressionEnabled();
         toggle.accessibilityLabel = content.text;
-        toggle.accessibilityIdentifier = path.row == 0 ? @"qar.recall.toggle" : @"qar.flash.toggle";
+        toggle.accessibilityIdentifier = path.row == 0 ? @"qar.recall.toggle" : path.row == 1 ? @"qar.flash.toggle" : @"qar.call-recording.toggle";
         [toggle addTarget:self action:@selector(toggleChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = toggle; cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        content.secondaryText = path.row == 0 ? @"保留已接收消息，显示撤回标识" : @"打开后保留，在聊天中重复查看";
+        content.secondaryText = path.row == 0 ? @"保留已接收消息，显示撤回标识" : path.row == 1 ? @"打开后保留，在聊天中重复查看" : @"屏蔽发给对方的开始与结束录制提醒";
     } else if (path.section == 0) {
         content.secondaryText = @"替换机型本身，不添加文字前缀";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -136,7 +140,9 @@ static NSDictionary *controlStatus(void) {
     return cell;
 }
 - (void)toggleChanged:(UISwitch *)sender {
-    if (sender.tag == 0) QARSetEnabled(sender.on); else QARSetFlashEnabled(sender.on);
+    if (sender.tag == 0) QARSetEnabled(sender.on);
+    else if (sender.tag == 1) QARSetFlashEnabled(sender.on);
+    else if (sender.tag == 3) QARSetCallRecordingSuppressionEnabled(sender.on);
 }
 - (void)confirmClear:(BOOL)flash {
     NSString *owner = QARCurrentOwner();
@@ -171,7 +177,7 @@ static NSDictionary *controlStatus(void) {
     else if (path.section == 1) [self confirmClear:path.row == 1];
     else if (path.section == 2 && path.row == 0) [self exportDiagnostics:path];
     else if (path.section == 2) {
-        QARResetDiagnostics(); QARResetBadgeCounters(); [self reloadStatus];
+        QARResetDiagnostics(); QARResetBadgeCounters(); QARResetCallRecordingCounters(); [self reloadStatus];
         UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, @"诊断计数已重置");
     }
 }
@@ -188,7 +194,7 @@ void QAROpenSettingsPanel(UIViewController *presenter) {
 }
 static void installAll(void) {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
-    QARInstallAdapters(info); QARInstallBadge(info); QARInstallFlash(info); QARInstallSettings(info); QARInstallDeviceDiagnostics(info);
+    QARInstallAdapters(info); QARInstallBadge(info); QARInstallFlash(info); QARInstallCallRecording(info); QARInstallSettings(info); QARInstallDeviceDiagnostics(info);
 }
 __attribute__((constructor)) static void QARStart(void) {
     @autoreleasepool {

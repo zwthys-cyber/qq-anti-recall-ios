@@ -2,7 +2,7 @@
 
 [![Build and test](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml/badge.svg)](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)
 
-面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看与自定义机型，设置入口位于 QQ 设置页。当前版本：**0.8.1-experimental**。
+面向 QQ **9.3.86（9.3.86.617）** 的 iOS 插件。提供消息防撤回、聊天内闪照回看、自定义机型与通话录制免提醒，设置入口位于 QQ 设置页。当前版本：**0.9.0-experimental**。
 
 [下载构建](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml) · [安装与使用](docs/installation.md) · [验证与故障排查](docs/validation.md) · [更新记录](CHANGELOG.md)
 
@@ -13,6 +13,7 @@
 | 消息防撤回 | 保留已接收消息，在消息下方显示“已撤回 · 已保留” | 未保存的历史内容不能补回；普通附件不会额外备份文件本体 |
 | 闪照保留 | 开启后正常打开闪照，再从原消息下方点击“闪照 · 再次查看” | 不恢复从未取得图片的已销毁闪照 |
 | 自定义机型 | 填写机型后，进入 QQ 官方设备名页面点击保存 | 替换机型本身；最终接受范围由 QQ 服务端决定 |
+| 通话录制免提醒 | 开启后拦截发给对方的开始、结束等录制状态通知 | 默认关闭；仅适配一对一通话，双端真实 QQ 效果待验证 |
 | 本机管理 | 独立开关、按账号清理副本、导出诊断 | 不提供悬浮按钮，不上传消息或图片 |
 
 ## 兼容性
@@ -30,9 +31,9 @@
 ## 快速开始
 
 1. 打开 [Actions](https://github.com/zwthys-cyber/qq-anti-recall-ios/actions/workflows/ci.yml)，选择对应版本、状态为成功的运行。
-2. 下载 `QQAntiRecall-0.8.1-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
+2. 下载 `QQAntiRecall-0.9.0-9.3.86.617-arm64`，解压取得 `QQAntiRecall.dylib`。
 3. 使用已有的注入、重签名流程替换旧插件，与匹配版本 QQ 一起签名安装。不要同时注入多个版本。
-4. 进入 **QQ 设置 → QQ 增强 · 插件设置**，调整所需功能。闪照保留默认关闭。
+4. 进入 **QQ 设置 → QQ 增强 · 插件设置**，调整所需功能。闪照保留和通话录制免提醒默认关闭；录制免提醒请在开始录制前开启。
 
 安装与升级注意事项见 [安装指南](docs/installation.md)。仓库不分发 QQ IPA、证书或签名凭据。
 
@@ -47,6 +48,8 @@
 用户随后确认 0.8.0 功能和流畅度已无问题。0.8.1 改用靛蓝设置配色，并修复 QQ 深色外观下的入口和导航栏颜色；主题修复仍需目标设备确认。详见 [验证矩阵](docs/validation.md)。
 
 诊断中的 `runtime_qq_verified`、`friend_visible_verified` 不会因安装 Hook 或收到成功响应而自动置为 true。用户实测反馈单独记录，不把某个账号的结果推广到所有账号。
+
+0.9.0 新增通话录制免提醒，已核对目标包的专用发送接口。真实 QQ 的语音、视频通话录制和好友端提醒仍需双端验证。
 
 ## 数据与隐私
 

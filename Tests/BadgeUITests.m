@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import "QARBadge.h"
 #import "QARFlash.h"
+#import "QARCallRecording.h"
 #import "QARSettings.h"
 #import "QARTheme.h"
 #import "QARDeviceDiagnostics.h"
@@ -487,6 +488,15 @@ static void testFlash(void) {
         flash.on = !originalFlash; [flash sendActionsForControlEvents:UIControlEventValueChanged];
         check(QARFlashEnabled() != originalFlash && QAREnabled() == originalRecall, "flash switch leaves recall preference unchanged");
         flash.on = originalFlash; [flash sendActionsForControlEvents:UIControlEventValueChanged];
+        UISwitch *recording = (id)[page.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]].accessoryView;
+        check([recording isKindOfClass:UISwitch.class] &&
+            [recording.accessibilityIdentifier isEqual:@"qar.call-recording.toggle"], "recording reminder switch exists");
+        BOOL originalRecording = QARCallRecordingSuppressionEnabled();
+        recording.on = !originalRecording; [recording sendActionsForControlEvents:UIControlEventValueChanged];
+        check(QARCallRecordingSuppressionEnabled() != originalRecording &&
+            QAREnabled() == originalRecall && QARFlashEnabled() == originalFlash, "recording switch is independent");
+        recording.on = originalRecording; [recording sendActionsForControlEvents:UIControlEventValueChanged];
+        check(QARCallRecordingSuppressionEnabled() == originalRecording, "recording switch restores original preference");
         self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
         after(^{
             [nav.view setNeedsLayout]; [nav.view layoutIfNeeded];
